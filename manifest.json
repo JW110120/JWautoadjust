@@ -1,0 +1,103 @@
+{
+  "manifestVersion": 5,
+  "name": "自动调整",
+  "version": "1.0.0",
+  "host": {
+    "app": "PS",
+    "minVersion": "23.0.0"
+  },
+  "main": "index.html",
+  "entrypoints": [
+    {
+      "id": "自动调整",
+      "label": {
+        "default": "自动调整"
+      },
+      "type": "panel",
+      "minimumSize": {
+        "width": 640,
+        "height": 480
+      },
+      "maximumSize": {
+        "width": 1280,
+        "height": 960
+      },
+      "preferredDockedSize": {
+        "width": 640,
+        "height": 480
+      },
+      "preferredFloatingSize": {
+        "width": 640,
+        "height": 480
+      },
+              "icons": [
+                {
+                    "path": "icons/panel_icon_dark.png",
+                    "width": 23,
+                    "scale": [
+                        1,
+                        2
+                    ],
+                    "theme": [
+                        "darkest",
+                        "dark",
+                        "medium"
+                    ],
+                    "height": 23
+                },
+                {
+                    "path": "icons/panel_icon_light.png",
+                    "width": 23,
+                    "scale": [
+                        1,
+                        2
+                    ],
+                    "theme": [
+                        "lightest",
+                        "light"
+                    ],
+                    "height": 23
+                }
+            ]
+        }
+    ],
+    "id": "com.photoshop.jwautoadjust",
+    "icons": [
+        {
+            "path": "icons/panel_icon_dark.png",
+            "width": 23,
+            "scale": [
+                1,
+                2
+            ],
+            "theme": [
+                "darkest",
+                "dark",
+                "medium"
+            ],
+            "height": 23
+        },
+        {
+            "path": "icons/panel_icon_light.png",
+            "width": 23,
+            "scale": [
+                1,
+                2
+            ],
+            "theme": [
+                "lightest",
+                "light"
+            ],
+            "height": 23
+        }
+    ],
+    "requiredPermissions": {
+        "clipboard": "readAndWrite",
+        "network": {
+            "domains": [
+                "unpkg.com"
+            ]
+        },
+        "allowCodeGenerationFromStrings": true
+    }
+}
