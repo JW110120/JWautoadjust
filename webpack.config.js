@@ -54,15 +54,17 @@ module.exports = (env, argv) => {
             patterns: [
                 { from: "./manifest.json", to: "." },
                 { from: "./src/assets/icons", to: "./icons" },
+                { from: "./src/assets/SourceHanSansCN-Normal.otf", to: "." },
+                { from: "./src/styles.css", to: "." }
             ]
         }),
         {
             apply: (compiler) => {
                 compiler.hooks.afterEmit.tap('AfterEmitPlugin', async (compilation) => {
                     if (argv.mode === 'production') {
-                        //await signPanel(panelOutput);
-                        //await packageWindows();
-                        //await packageMac();
+                        await signPanel(panelOutput);
+                        await packageWindows();
+                        await packageMac();
                     }
                 });
             }

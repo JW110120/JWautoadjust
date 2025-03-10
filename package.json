@@ -2,7 +2,7 @@
   "name": "JWautoadjust",
   "version": "1.0.0",
   "description": "UXP插件，用于记录调整步骤并应用到像素图层",
-  "main": "index.js",
+  "main": "bundle.js",
   "author": "JW",
   "license": "MIT",
   "private": false,

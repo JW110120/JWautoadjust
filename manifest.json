@@ -1,5 +1,5 @@
 {
-  "manifestVersion": 5,
+  "manifestVersion": 4,
   "name": "自动调整",
   "version": "1.0.0",
   "host": {
@@ -30,74 +30,48 @@
         "width": 640,
         "height": 480
       },
-              "icons": [
-                {
-                    "path": "icons/panel_icon_dark.png",
-                    "width": 23,
-                    "scale": [
-                        1,
-                        2
-                    ],
-                    "theme": [
-                        "darkest",
-                        "dark",
-                        "medium"
-                    ],
-                    "height": 23
-                },
-                {
-                    "path": "icons/panel_icon_light.png",
-                    "width": 23,
-                    "scale": [
-                        1,
-                        2
-                    ],
-                    "theme": [
-                        "lightest",
-                        "light"
-                    ],
-                    "height": 23
-                }
-            ]
-        }
-    ],
-    "id": "com.photoshop.jwautoadjust",
-    "icons": [
+      "icons": [
         {
-            "path": "icons/panel_icon_dark.png",
+            "path": "icons/dark-panel.png",
             "width": 23,
-            "scale": [
-                1,
-                2
-            ],
-            "theme": [
-                "darkest",
-                "dark",
-                "medium"
-            ],
-            "height": 23
+            "height": 23,
+            "scale": [1,2],
+            "theme": ["darkest", "dark", "medium"],
+            "species": ["chrome"]
         },
         {
-            "path": "icons/panel_icon_light.png",
+            "path": "light-panel.png",
             "width": 23,
-            "scale": [
-                1,
-                2
-            ],
-            "theme": [
-                "lightest",
-                "light"
-            ],
-            "height": 23
+            "height": 23,
+            "scale": [1,2],
+            "theme": ["lightest", "light"],
+            "species": ["chrome"]
         }
-    ],
-    "requiredPermissions": {
-        "clipboard": "readAndWrite",
-        "network": {
-            "domains": [
-                "unpkg.com"
-            ]
-        },
-        "allowCodeGenerationFromStrings": true
-    }
+    ]
+}
+],
+"id": "com.photoshop.jwautoadjust",
+"icons": [
+{
+    "path": "icons/plugin.png",
+    "width": 48,
+    "height": 48,
+    "scale": [1,2],
+    "theme": ["darkest", "dark", "medium", "lightest", "light", "all"],
+    "species": ["pluginList"]
+}
+],
+"requiredPermissions": {
+"clipboard": "readAndWrite",
+"network": {
+    "domains": "all"
+},
+"allowCodeGenerationFromStrings": true,
+"launchProcess": {
+"schemes": ["http", "https"]
+}
+},
+"build": {
+"cssResources": ["styles.css"]
+}
 }
