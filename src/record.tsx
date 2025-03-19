@@ -1,24 +1,30 @@
 import React, { useState, useContext } from 'react';
-import { app, Document, Layer, SmartObject } from 'photoshop';
+import { app } from 'photoshop';
 import { AdjustmentStepsContext } from './AdjustmentStepsContext';
 
-const Record = () => {
+export const useRecord = () => {
     const { addAdjustmentStep } = useContext(AdjustmentStepsContext);
     const [isRecording, setIsRecording] = useState(false);
     const [adjustmentSteps, setAdjustmentSteps] = useState([]);
-    const [mergedLayer, setMergedLayer] = useState(null);
-    const [notificationListener, setNotificationListener] = useState(null);
+    const [notificationListeners, setNotificationListeners] = useState([]);
+    const [mergedLayer, setMergedLayer] = useState(null);  // 添加这一行来存储合并后的图层
 
-    // 开始录制功能实现
     const startRecording = async () => {
-        const doc: Document = app.activeDocument;
+        console.log('开始录制函数被调用');
+        const doc = app.activeDocument;
         if (doc) {
+            console.log('获取到活动文档:', doc.name);
             const { executeAsModal, showAlert } = require("photoshop").core;
             const { batchPlay, addNotificationListener } = require("photoshop").action;
 
             try {
-                const result = await executeAsModal(async () => {
+                setAdjustmentSteps([]);
+                setIsRecording(true);
+                
+                await executeAsModal(async () => {
+                    
                     // 1. 合并可见图层
+                    console.log('准备合并可见图层');
                     const mergeResult = await batchPlay(
                         [
                             {
@@ -29,14 +35,23 @@ const Record = () => {
                                 }
                             }
                         ],
-                        {}
+                        { synchronousExecution: true }
                     );
 
-                    // 获取合并后的图层
+                    // 直接获取当前激活的图层
                     const mergedLayer = doc.activeLayer;
+                    console.log('获取到合并后的图层:', mergedLayer?.name);
 
+                    if (!mergedLayer) {
+                        console.error('无法获取合并后的图层');
+                        throw new Error('无法获取合并后的图层');
+                    }
+
+                    setMergedLayer(mergedLayer);
+                    
                     // 2. 置顶图层
-                    await batchPlay(
+                    console.log('准备置顶图层');
+                    const moveResult = await batchPlay(
                         [
                             {
                                 _obj: "move",
@@ -59,9 +74,11 @@ const Record = () => {
                         ],
                         {}
                     );
+                    console.log('置顶图层结果:', moveResult);
 
                     // 3. 重命名图层
-                    await batchPlay(
+                    console.log('准备重命名图层');
+                    const renameResult = await batchPlay(
                         [
                             {
                                 _obj: "set",
@@ -83,9 +100,11 @@ const Record = () => {
                         ],
                         {}
                     );
+                    console.log('重命名图层结果:', renameResult);
 
                     // 4. 转换为智能对象
-                    const smartObj = await batchPlay(
+                    console.log('准备转换为智能对象');
+                    const convertResult = await batchPlay(
                         [
                             {
                                 _obj: "newPlacedLayer",
@@ -96,68 +115,84 @@ const Record = () => {
                         ],
                         {}
                     );
+                    console.log('转换为智能对象结果:', convertResult);
 
-                    return smartObj;
+                    // 保存智能对象的ID
+                    const smartObjId = doc.activeLayer.id;
+                    console.log('获取到智能对象ID:', smartObjId);
+                    setSampleLayerId(smartObjId);
                 }, {"commandName": "开始录制"});
 
-                // 5. 监听调整操作
-                const listener = await addNotificationListener(
-                    ['objectChanged', 'smartFilterChanged'],
+                // 创建监听器
+                console.log('准备创建调整监听器');
+                const adjustmentListener = await addNotificationListener(
+                    ['adjustmentChanged', 'adjustmentLayerChanged', 'smartFilterChanged', 'filterChanged'],
                     async (event, descriptor) => {
-                        // 检查是否是目标图层的更改
-                        const isTargetLayer = descriptor._target && 
-                            descriptor._target[0]._ref === "layer" && 
-                            descriptor._target[0]._id === result._id;
-
-                        // 检查是否是智能滤镜的更改
-                        const isSmartFilter = descriptor._target && 
-                            descriptor._target[0]._ref === "smartFilter";
-
-                        if (isTargetLayer || isSmartFilter) {
-                            let step = '';
-                            if (event === 'objectChanged') {
-                                step = `图层调整: ${descriptor._property || '未知属性'}`;
-                            } else if (event === 'smartFilterChanged') {
-                                step = `智能滤镜调整: ${descriptor._property || '未知滤镜'}`;
+                        console.log('收到调整事件:', event);
+                        console.log('调整描述符:', descriptor);
+                        try {
+                            if (isRecording && doc.activeLayer) {
+                                const adjustmentType = descriptor._obj || descriptor.type || descriptor.name || '调整';
+                                const step = `调整: ${adjustmentType}`;
+                                console.log('记录调整步骤:', step);
+                                
+                                if (step) {
+                                    setAdjustmentSteps(prev => {
+                                        if (!prev.includes(step)) {
+                                            addAdjustmentStep(step);
+                                            return [...prev, step];
+                                        }
+                                        return prev;
+                                    });
+                                }
                             }
-                            
-                            if (step) {
-                                setAdjustmentSteps(prev => [...prev, step]);
-                                addAdjustmentStep(step);
-                            }
+                        } catch (error) {
+                            console.error('调整监听器错误:', error);
                         }
                     }
                 );
-
-                setNotificationListener(listener);
-                setMergedLayer(result);
-                setIsRecording(true);
-                showAlert({ message: '录制已开始！' });
+                console.log('调整监听器创建成功');
+                setNotificationListeners([adjustmentListener]);
+                
+                showAlert({ message: '录制已开始，请对样本图层进行调整操作！' });
+                
             } catch (error) {
-                showAlert({ message: `录制失败: ${error.message}` });
-                throw error;
+                console.error('录制过程中发生错误:', error);
+                const errorMessage = error?.message || '未知错误';
+                showAlert({ message: `开始录制失败: ${errorMessage}` });
+                setIsRecording(false);
             }
         } else {
-            throw new Error('没有活动的文档，无法开始录制');
+            console.error('没有找到活动文档');
         }
     };
 
-    // 停止录制功能
-    const stopRecording = () => {
-        if (notificationListener) {
-            notificationListener();
-            setNotificationListener(null);
+    // 停止录制
+    const stopRecording = async () => {
+        try {
+            // 移除所有监听器
+            notificationListeners.forEach(listener => {
+                if (listener && typeof listener.remove === 'function') {
+                    listener.remove();
+                }
+            });
+            setNotificationListeners([]);
+            
+            // 更新录制状态
+            setIsRecording(false);
+            
+        } catch (error) {
+            console.error('停止录制失败:', error);
         }
-        setIsRecording(false);
-        const { showAlert } = require("photoshop").core;
-        showAlert({ message: '录制已停止！' });
     };
 
     return {
         startRecording,
         stopRecording,
-        isRecording
+        isRecording,
+        adjustmentSteps
     };
 };
 
-export default Record;
+// 删除这一行，因为没有定义Record组件
+// export default Record;

@@ -14,79 +14,55 @@ body {
 
 #root {
   width: 100%;
-  min-height: calc(100vh - 60px); /* 预留底部空间 */
-  padding: 20px;
   position: relative;
   box-sizing: border-box;
 }
 
 .main-container {
   display: flex;
-  position: relative; /* 新增 */
+  position: relative;
   background: #111;
   color: #fff;
-  min-height: calc(100vh - 60px);
+  min-height: calc(100vh - 30px);
   box-sizing: border-box;
+  border: 1px solid #444;  /* 增加主容器边框 */
 }
 
 .splitter {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 6px; /* 增加宽度以便于操作 */
+  width: 10px; /* 增加宽度以便于操作 */
   background: #444;
-  cursor: col-resize;
   z-index: 1;
 }
 
 .left-section {
   flex: 1;
   position: relative;
+  border: 1px solid #444;  /* 增加左侧区域边框 */
 }
 
 .right-section {
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-
-.layer-section {
-  border: 1px solid #444;
-  flex: 1;
-  overflow-y: auto; /* 文件树区域添加滚动条 */
-}
-
-/* 添加分割线样式 */
-.main-container::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: #444;
-  cursor: col-resize;
+  border: 1px solid #444;  /* 增加右侧区域边框 */
 }
 
 .operation-record {
-  border: 1px solid #444;
+  border: 2px solid #444;
   padding: 20px;
-  margin-bottom: 10px; /* 与按钮区域保持间距 */
 }
 
 .bottom-buttons {
-  border-top: 1px solid #444;
   display: flex;
 }
 
 .right-bottom-buttons {
   display: flex;
-  border-top: 1px solid #444; /* 添加分割线 */
 }
 
 .operation-list {
   list-style: none;
-  padding: 0;
   max-height: calc(100vh - 250px); /* 设置最大高度 */
   overflow-y: auto; /* 添加滚动条 */
 }
@@ -102,13 +78,18 @@ body {
 }
 
 .layer-section {
-  border: 1px solid #444;
-  padding: 10px;
+  border: 2px solid #444;
+  flex: 1;
+  overflow-y: auto;
+  border-radius: 0;  /* 确保没有圆角 */
+}
+
+.group-header {
+  border-bottom: 2px solid #444 !important;  /* 使用 !important 确保覆盖内联样式 */
 }
 
 .layer-list {
   list-style: none;
-  padding: 0;
   max-height: calc(100vh - 250px); /* 设置最大高度 */
   overflow-y: auto; /* 添加滚动条 */
 }
