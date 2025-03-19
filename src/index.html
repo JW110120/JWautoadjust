@@ -3,7 +3,7 @@
 <!-- Fix 3: Remove invalid CSS reference -->
 <head>
     <meta charset="UTF-8">
-    <title>自动调整</title>
+    <title>调整自动拆分</title>
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
     <link rel="stylesheet" href="./styles.css">
     <style>
@@ -18,10 +18,10 @@
     <!-- Remove this line: <link rel="stylesheet" href="path/to/spectrum.css"> -->
 </head>
 <body>
-    <div id="root" style="min-height: calc(100vh - 40px);"></div> <!-- 预留底部空间 -->
-    <div style="position: fixed; bottom: 0; right: 0; padding: 10px;">
+    <div id="root" style="min-height: calc(100vh - 60px);"></div> <!-- 增加底部空间 -->
+    <div style="position: fixed; bottom: 0; right: 0; height: 40px; z-index: 1; opacity: 0.7; color: #666;">
         <br>
-        <span>Copyright © JW</span>
+        <span>Copyright © listen2me(JW)</span>
     </div>
 </body>
 </html>

@@ -1,6 +1,6 @@
 {
   "manifestVersion": 4,
-  "name": "自动调整",
+  "name": "调整自动拆分",
   "version": "1.0.0",
   "host": {
     "app": "PS",
@@ -9,14 +9,14 @@
   "main": "index.html",
   "entrypoints": [
     {
-      "id": "自动调整",
+      "id": "调整自动拆分",
       "label": {
-        "default": "自动调整"
+        "default": "调整自动拆分"
       },
       "type": "panel",
       "minimumSize": {
         "width": 640,
-        "height": 480
+        "height": 600
       },
       "maximumSize": {
         "width": 1280,
@@ -24,11 +24,11 @@
       },
       "preferredDockedSize": {
         "width": 640,
-        "height": 480
+        "height": 600
       },
       "preferredFloatingSize": {
         "width": 640,
-        "height": 480
+        "height": 600
       },
       "icons": [
         {

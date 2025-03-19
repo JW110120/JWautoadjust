@@ -14,10 +14,126 @@ body {
 
 #root {
   width: 100%;
-  min-height: calc(100vh - 40px); /* 预留底部空间 */
+  min-height: calc(100vh - 60px); /* 预留底部空间 */
   padding: 20px;
   position: relative;
   box-sizing: border-box;
 }
 
-/* 保留原字体定义 */
+.main-container {
+  display: flex;
+  position: relative; /* 新增 */
+  background: #111;
+  color: #fff;
+  min-height: calc(100vh - 60px);
+  box-sizing: border-box;
+}
+
+.splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px; /* 增加宽度以便于操作 */
+  background: #444;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.left-section {
+  flex: 1;
+  position: relative;
+}
+
+.right-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.layer-section {
+  border: 1px solid #444;
+  flex: 1;
+  overflow-y: auto; /* 文件树区域添加滚动条 */
+}
+
+/* 添加分割线样式 */
+.main-container::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #444;
+  cursor: col-resize;
+}
+
+.operation-record {
+  border: 1px solid #444;
+  padding: 20px;
+  margin-bottom: 10px; /* 与按钮区域保持间距 */
+}
+
+.bottom-buttons {
+  border-top: 1px solid #444;
+  display: flex;
+}
+
+.right-bottom-buttons {
+  display: flex;
+  border-top: 1px solid #444; /* 添加分割线 */
+}
+
+.operation-list {
+  list-style: none;
+  padding: 0;
+  max-height: calc(100vh - 250px); /* 设置最大高度 */
+  overflow-y: auto; /* 添加滚动条 */
+}
+
+.operation-list li {
+  padding: 5px;
+  cursor: pointer;
+}
+
+.operation-list li.selected {
+  background: #333;
+  border-left: 3px solid #0099ff;
+}
+
+.layer-section {
+  border: 1px solid #444;
+  padding: 10px;
+}
+
+.layer-list {
+  list-style: none;
+  padding: 0;
+  max-height: calc(100vh - 250px); /* 设置最大高度 */
+  overflow-y: auto; /* 添加滚动条 */
+}
+
+.layer-list li.group {
+  margin-bottom: 5px;
+}
+
+.layer-list ul {
+  list-style: none;
+  padding-left: 20px;
+}
+
+/* 在文件末尾添加以下样式 */
+#root + div {
+  min-width: 150px; /* 设置最小宽度 */
+  padding: 10px 10px; /* 增加左右padding */
+  white-space: nowrap; /* 防止文字换行 */
+}
+
+.group {
+  cursor: pointer;
+  user-select: none;
+}
+
+.group ul {
+  transition: all 0.3s ease;
+}
