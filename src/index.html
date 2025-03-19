@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+<!-- Fix 3: Remove invalid CSS reference -->
 <head>
     <meta charset="UTF-8">
     <title>自动调整</title>
@@ -14,17 +15,12 @@
             display: none;
         }
     </style>
-	<link rel="stylesheet" href="path/to/spectrum.css">
-    <script>
-        // 修复mac下点击事件没有反馈的问题
-        // https://bleepcoder.com/react-spectrum/667291182/click-events-don-t-work-on-macos-in-adobe-cep-extension
-        delete window.PointerEvent;
-    </script>
+    <!-- Remove this line: <link rel="stylesheet" href="path/to/spectrum.css"> -->
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root" style="min-height: calc(100vh - 40px);"></div> <!-- 预留底部空间 -->
     <div style="position: fixed; bottom: 0; right: 0; padding: 10px;">
-        <span id="ps-version"></span><br>
+        <br>
         <span>Copyright © JW</span>
     </div>
 </body>

@@ -8,7 +8,7 @@ interface AdjustmentStepsContextType {
 }
 
 // 创建上下文对象
-const AdjustmentStepsContext = React.createContext<AdjustmentStepsContextType | undefined>(undefined);
+export const AdjustmentStepsContext = React.createContext<AdjustmentStepsContextType | undefined>(undefined);
 
 export const AdjustmentStepsProvider = AdjustmentStepsContext.Provider;
 export default AdjustmentStepsContext;

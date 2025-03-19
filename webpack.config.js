@@ -25,9 +25,9 @@ function createConfig(mode, entry, output, plugins) {
         resolve: { extensions: ['.tsx', '.ts', '.jsx', '.js', '.json'] },
         externals: {
             _require: "require",
-            photoshop: 'commonjs2 photoshop',
-            uxp: 'commonjs2 uxp',
-            os: 'commonjs2 os',
+            photoshop: 'commonjs photoshop',
+            uxp: 'commonjs uxp',
+            os: 'commonjs os'
         },
         output: {
             filename: '[name].js',
@@ -47,8 +47,7 @@ module.exports = (env, argv) => {
         new HtmlWebpackPlugin({
             template: './src/index.html',
             filename: 'index.html',
-            /*inlineSource: '.(js)$',*/
-            chunks: ['uxp'],
+            chunks: ['uxp'], // 确保这里与webpack入口配置匹配
         }),
         new copyWebpackPlugin({
             patterns: [

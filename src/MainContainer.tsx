@@ -1,12 +1,25 @@
-import * as React from'react';
+import React from'react';
 import Record from './Record';
 import Adjust from './Adjust';
 
-const MainContainer: React.FC = () => {
+const MainContainer = () => {
     return (
-        <div className="spectrum-Body" style={{ display: 'flex', gap: 20, background: '#111', color: '#fff' }}>
-            <Record />
-            <Adjust />
+        <div style={{ 
+            display: 'flex',
+            gap: 20,
+            height: '100vh',
+            padding: '20px',
+            boxSizing: 'border-box',
+            overflow: 'auto',
+            width: '100%' // 添加宽度约束
+        }}>
+            {/* 为两个面板添加弹性容器 */}
+            <div style={{ flex: 1, minWidth: 300 }}>
+                <Record />
+            </div>
+            <div style={{ flex: 1, minWidth: 300 }}>
+                <Adjust />
+            </div>
         </div>
     );
 };
