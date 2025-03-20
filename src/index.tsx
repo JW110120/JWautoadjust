@@ -1,19 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import MainContainer from './MainContainer';
-import { AdjustmentStepsProvider } from './AdjustmentStepsContext';
+import { AdjustmentStepsContext, AdjustmentStepsProvider } from './AdjustmentStepsContext';
 
-// 确保 root 元素存在
 const container = document.getElementById('root');
 if (container) {
   const root = createRoot(container);
-  root.render(
-    <AdjustmentStepsProvider value={{ 
-        adjustmentSteps: [],
-        addAdjustmentStep: () => {},
-        deleteAdjustmentStep: () => {}
-    }}>
-      <MainContainer />
-    </AdjustmentStepsProvider>
-  );
+  
+  // 创建一个根组件来管理状态
+  const App = () => {
+    // 移除这里的状态管理，因为我们现在使用 AdjustmentStepsProvider
+    return (
+      <AdjustmentStepsProvider>
+        <MainContainer />
+      </AdjustmentStepsProvider>
+    );
+  };
+
+  root.render(<App />);
 }

@@ -1,13 +1,18 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { AdjustmentStepsContext } from './AdjustmentStepsContext';
-import { useRecord } from './record';  // 确保这里使用命名导入
+import { useRecord } from './record';
 import Adjust from './adjust';
 
 const MainContainer: React.FC = () => {
     const { adjustmentSteps } = useContext(AdjustmentStepsContext);
-    const adjustInstance = Adjust();
-    const { startRecording, stopRecording, isRecording } = useRecord();
+    const { startRecording, stopRecording, isRecording, AdjustmentMenu } = useRecord();
 
+    useEffect(() => {
+        // 当 adjustmentSteps 更新时，打印日志
+        console.log('调整步骤更新:', adjustmentSteps);
+    }, [adjustmentSteps]);
+
+    const adjustInstance = Adjust();
     // 处理记录按钮点击
     const handleRecordClick = async () => {
         try {
@@ -79,16 +84,8 @@ const MainContainer: React.FC = () => {
                     backgroundColor: '#333',
                     borderTop: '1px solid #444'
                 }}>
-                    <button style={{ 
-                        backgroundColor: '#444',
-                        border: 'none',
-                        color: '#fff',
-                        padding: '8px 8px',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                    }}>
-                        <span style={{ marginRight: '5px' }}>+</span> 新增
-                    </button>
+                    {/* 替换原来的新增按钮为下拉菜单组件 */}
+                    <AdjustmentMenu />
                     <button 
                         onClick={handleRecordClick}
                         style={{ 
@@ -120,6 +117,7 @@ const MainContainer: React.FC = () => {
                 flexDirection: 'column',
                 minHeight: '100%'
             }}>
+                {/* 右侧部分保持不变 */}
                 <div style={{ 
                     padding: '10px', 
                     backgroundColor: '#333',
