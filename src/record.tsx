@@ -32,10 +32,8 @@ export const useRecord = () => {
     const [localSteps, setLocalSteps] = useState([]); // 移到顶层
 
     const startRecording = async () => {
-        console.log('开始录制函数被调用');
         const doc = app.activeDocument;
         if (doc) {
-            console.log('获取到活动文档:', doc.name);
             const { executeAsModal, showAlert } = require("photoshop").core;
             const { batchPlay, addNotificationListener } = require("photoshop").action;
     
@@ -46,7 +44,6 @@ export const useRecord = () => {
                 await executeAsModal(async () => {
                     try {
                         // 1. 合并可见图层
-                        console.log('准备合并可见图层');
                         await batchPlay(
                             [
                                 {
@@ -61,7 +58,6 @@ export const useRecord = () => {
                         );
     
                         // 2. 重命名图层
-                        console.log('准备重命名图层');
                         await batchPlay(
                             [
                                 {
@@ -83,7 +79,6 @@ export const useRecord = () => {
                         );
     
                         // 3. 置顶图层
-                        console.log('准备置顶图层');
                         await batchPlay(
                             [
                                 {
@@ -106,7 +101,6 @@ export const useRecord = () => {
                         );
     
                         // 4. 转换为智能对象
-                        console.log('准备转换为智能对象');
                         await batchPlay(
                             [
                                 {
@@ -149,7 +143,6 @@ export const useRecord = () => {
                         if (typeof smartObjId === 'undefined') {
                             throw new Error('无法获取智能对象ID');
                         }
-                        console.log('获取到智能对象ID:', smartObjId);
                         setSampleLayerId(smartObjId);
                     } catch (error) {
                         console.error('executeAsModal内部错误:', error);
@@ -158,15 +151,10 @@ export const useRecord = () => {
                 }, {"commandName": "开始录制"});
     
                 // 创建监听器
-                console.log('准备创建调整监听器');
                 const adjustmentListener = await addNotificationListener(
                     ['all'],
                     async (event, descriptor) => {
                         console.log('收到事件类型:', event);
-                        console.log('事件描述符:', JSON.stringify(descriptor, null, 2));
-                        
-                        // 先记录更新前的状态
-                        console.log('更新前的步骤:', adjustmentSteps);
                         
                         // 根据事件类型添加初始步骤
                         if (event === 'curves') {
@@ -235,7 +223,6 @@ export const useRecord = () => {
                         }
                     }
                 );
-                console.log('调整监听器创建成功');
                 setNotificationListeners([adjustmentListener]);
                 
             } catch (error) {
