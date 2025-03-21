@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from'react';
+import React, { useState, useContext, useEffect, useCallback } from 'react';
 import { app, Document, Layer, SmartObject, Snapshot } from 'photoshop';
 import { AdjustmentStepsContext } from './AdjustmentStepsContext';
 
@@ -16,154 +16,80 @@ const Adjust = () => {
     const [selectedLayerPaths, setSelectedLayerPaths] = useState<Record<string, boolean>>({});
 
     // 获取像素图层
-    const getPixelLayers = async () => {
-        const doc: Document = app.activeDocument;
-        if (doc) {
-            const layers = doc.layers.filter(layer => layer.typename === "PixelLayer");
-            setPixelLayers(layers);
-        }
-    };
-
-    // 刷新像素图层列表
-    const refreshLayers = () => {
-        getPixelLayers();
-    };
-
-    // checkbox 状态改变处理
-    const handleCheckboxChange = (layer, isChecked) => {
-        if (isChecked) {
-            setSelectedLayers([...selectedLayers, layer]);
-        } else {
-            const newSelectedLayers = selectedLayers.filter(l => l!== layer);
-            setSelectedLayers(newSelectedLayers);
-        }
-    };
-
-    // 处理盖印后的图层
-    const processLayer = async (layer) => {
-        // 现有代码保持不变
-    };
-
-    // 修改后的applyAdjustments函数
-    const applyAdjustments = async () => {
-        // 现有代码保持不变
-    };
-
-    // 从MainContainer移植过来的文件树相关功能
-    useEffect(() => {
-        const countPixelLayers = (layers) => {
-            let count = 0;
-            layers.forEach(layer => {
-                if (layer.kind === 'pixel') {
-                    count++;
-                } else if (layer.kind === 'group') {
-                    count += countPixelLayers(layer.layers);
-                }
-            });
-            return count;
-        };
-
-        const updateDocumentInfo = () => {
+    const getPixelLayers = useCallback(async () => {
+        try {
             const doc = app.activeDocument;
             if (doc) {
-                const groups = doc.layers.filter(layer => layer.kind === 'group');
-                const pixelLayers = countPixelLayers(doc.layers);
-                setDocumentInfo({
-                    fileName: doc.name,
-                    groupCount: groups.length,
-                    pixelLayerCount: pixelLayers
-                });
-            } else {
-                setDocumentInfo({
-                    fileName: '无活动文档',
-                    groupCount: 0,
-                    pixelLayerCount: 0
-                });
+                const layers = doc.layers.filter(layer => layer.typename === "PixelLayer");
+                setPixelLayers(layers);
             }
-        };
-
-        updateDocumentInfo();
-        
-        // 使用单一事件监听，通过定时器轮询更新
-        const interval = setInterval(updateDocumentInfo, 1000); // 每秒检查一次
-
-        return () => {
-            clearInterval(interval);
-        };
+        } catch (error) {
+            console.error('获取像素图层失败:', error);
+        }
     }, []);
 
-    const toggleGroup = (path: string) => {
+    // 刷新像素图层列表
+    const refreshLayers = useCallback(() => {
+        getPixelLayers();
+    }, [getPixelLayers]);
+
+    // 处理盖印后的图层
+    const processLayer = useCallback(async (layer) => {
+        // 现有代码保持不变
+        console.log('处理图层:', layer.name);
+    }, []);
+
+    // 修改后的applyAdjustments函数
+    const applyAdjustments = useCallback(async () => {
+        // 现有代码保持不变
+        console.log('应用调整到选中的图层:', selectedLayers.length);
+        setProgress(0);
+        
+        for (let i = 0; i < selectedLayers.length; i++) {
+            await processLayer(selectedLayers[i]);
+            setProgress(Math.floor((i + 1) / selectedLayers.length * 100));
+        }
+    }, [selectedLayers, processLayer]);
+
+    // 切换组的展开/折叠状态
+    const toggleGroup = useCallback((path: string) => {
         setCollapsedGroups(prev => ({
             ...prev,
             [path]: !prev[path]
         }));
-    };
+    }, []);
 
-    const handleLayerCheckboxChange = (path: string, layer: Layer) => {
+    // 处理图层选择状态变化
+    const handleLayerCheckboxChange = useCallback((path: string, layer: Layer) => {
+        // 使用函数式更新，避免依赖当前状态
         setSelectedLayerPaths(prev => {
-            const newState = {
-                ...prev,
-                [path]: !prev[path]
-            };
+            const newState = { ...prev, [path]: !prev[path] };
             
-            // 更新selectedLayers数组
-            if (newState[path]) {
-                setSelectedLayers(prev => [...prev, layer]);
+            // 基于新状态更新selectedLayers
+            const isNowSelected = newState[path];
+            
+            if (isNowSelected) {
+                // 如果现在是选中状态，添加到selectedLayers
+                setSelectedLayers(currentSelected => {
+                    // 检查是否已经存在
+                    if (currentSelected.some(l => l.id === layer.id)) {
+                        return currentSelected;
+                    }
+                    return [...currentSelected, layer];
+                });
             } else {
-                setSelectedLayers(prev => prev.filter(l => l !== layer));
+                // 如果现在是未选中状态，从selectedLayers中移除
+                setSelectedLayers(currentSelected => 
+                    currentSelected.filter(l => l.id !== layer.id)
+                );
             }
             
             return newState;
         });
-    };
-
-    const renderLayerTree = (layers: Layer[], parentPath = '') => {
-        return layers.map((layer, index) => {
-            const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
-            
-            if (layer.kind === 'group') {
-                return (
-                    <li className="group" key={currentPath} style={{ fontSize: '16px', margin: '8px 0' }}>
-                        <div 
-                            style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                            onClick={() => toggleGroup(currentPath)}
-                        >
-                            <span style={{ marginRight: '8px' }}>
-                                {collapsedGroups[currentPath] ? '▶' : '▼'}
-                            </span>
-                            {layer.name}
-                        </div>
-                        {!collapsedGroups[currentPath] && (
-                            <ul style={{ marginLeft: '20px' }}>
-                                {renderLayerTree(layer.layers, currentPath)}
-                            </ul>
-                        )}
-                    </li>
-                );
-            } else if (layer.kind === 'pixel') {
-                return (
-                    <li key={currentPath} style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        fontSize: '16px', 
-                        margin: '8px 0' 
-                    }}>
-                        <input 
-                            type="checkbox" 
-                            checked={!!selectedLayerPaths[currentPath]}
-                            onChange={() => handleLayerCheckboxChange(currentPath, layer)}
-                            style={{ margin: '0 8px 0 0', verticalAlign: 'middle' }}
-                        />
-                        {layer.name}
-                    </li>
-                );
-            }
-            return null;
-        });
-    };
+    }, []);
 
     // 创建快照功能
-    const handleCreateSnapshot = async () => {
+    const handleCreateSnapshot = useCallback(async () => {
         try {
             if (app.activeDocument) {
                 const { executeAsModal } = require("photoshop").core;
@@ -174,11 +100,7 @@ const Adjust = () => {
                         [
                             {
                                 _obj: "make",
-                                _target: [
-                                    {
-                                        _ref: "snapshotClass"
-                                    }
-                                ],
+                                _target: [{ _ref: "snapshotClass" }],
                                 from: {
                                     _ref: "historyState",
                                     _property: "currentHistoryState"
@@ -197,7 +119,6 @@ const Adjust = () => {
                     );
                 }, {"commandName": "创建快照"});
                 const { showAlert } = require("photoshop").core;
-                showAlert({ message: '快照创建成功！' });
             } else {
                 const { showAlert } = require("photoshop").core;
                 showAlert({ message: '没有活动的文档，无法创建快照' });
@@ -207,90 +128,59 @@ const Adjust = () => {
             const { showAlert } = require("photoshop").core;
             showAlert({ message: `创建快照失败: ${error.message}` });
         }
-    };
+    }, []);
+
+    // 文档信息更新函数
+    const updateDocumentInfo = useCallback(() => {
+        const countPixelLayers = (layers) => {
+            let count = 0;
+            layers.forEach(layer => {
+                if (layer.kind === 'pixel') {
+                    count++;
+                } else if (layer.kind === 'group') {
+                    count += countPixelLayers(layer.layers);
+                }
+            });
+            return count;
+        };
+
+        try {
+            const doc = app.activeDocument;
+            if (doc) {
+                const groups = doc.layers.filter(layer => layer.kind === 'group');
+                const pixelLayers = countPixelLayers(doc.layers);
+                setDocumentInfo({
+                    fileName: doc.name,
+                    groupCount: groups.length,
+                    pixelLayerCount: pixelLayers
+                });
+            } else {
+                setDocumentInfo({
+                    fileName: '无活动文档',
+                    groupCount: 0,
+                    pixelLayerCount: 0
+                });
+            }
+        } catch (error) {
+            console.error('更新文档信息失败:', error);
+        }
+    }, []);
+
+    // 初始化和监听文档变化
+    useEffect(() => {
+        // 初始更新
+        updateDocumentInfo();
+        
+        // 设置定时器
+        const interval = setInterval(updateDocumentInfo, 2000);
+        
+        // 清理函数
+        return () => clearInterval(interval);
+    }, [updateDocumentInfo]);
 
     // 渲染文件树组件
     const LayerTreeComponent = () => {
-        const [documentInfo, setDocumentInfo] = useState({
-            fileName: '无活动文档',
-            groupCount: 0,
-            pixelLayerCount: 0
-        });
-        useEffect(() => {
-            const countPixelLayers = (layers) => {
-                let count = 0;
-                layers.forEach(layer => {
-                    if (layer.kind === 'pixel') {
-                        count++;
-                    } else if (layer.kind === 'group') {
-                        count += countPixelLayers(layer.layers);
-                    }
-                });
-                return count;
-            };
-    
-            let lastFileName = '';
-            const updateDocumentInfo = () => {
-                try {
-                    const doc = app.activeDocument;
-                    if (doc) {
-                        // 只在文档确实改变时更新
-                        if (lastFileName !== doc.name) {
-                            lastFileName = doc.name;
-                            const groups = doc.layers.filter(layer => layer.kind === 'group');
-                            const pixelLayers = countPixelLayers(doc.layers);
-                            setDocumentInfo({
-                                fileName: doc.name,
-                                groupCount: groups.length,
-                                pixelLayerCount: pixelLayers
-                            });
-                        }
-                    } else if (lastFileName !== '') {
-                        lastFileName = '';
-                        setDocumentInfo({
-                            fileName: '无活动文档',
-                            groupCount: 0,
-                            pixelLayerCount: 0
-                        });
-                    }
-                } catch (error) {
-                    console.error('更新文档信息失败:', error);
-                }
-            };
-
-            // 初始更新
-            updateDocumentInfo();
-            
-            // 使用较长的间隔时间
-            const interval = setInterval(updateDocumentInfo, 2000);
-            return () => clearInterval(interval);
-        }, []); // 不需要任何依赖
-
-        const toggleGroup = (path: string) => {
-            setCollapsedGroups(prev => ({
-                ...prev,
-                [path]: !prev[path]
-            }));
-        };
-
-        const handleLayerCheckboxChange = (path: string, layer: Layer) => {
-            setSelectedLayerPaths(prev => {
-                const newState = {
-                    ...prev,
-                    [path]: !prev[path]
-                };
-                
-                // 更新selectedLayers数组
-                if (newState[path]) {
-                    setSelectedLayers(prev => [...prev, layer]);
-                } else {
-                    setSelectedLayers(prev => prev.filter(l => l !== layer));
-                }
-                
-                return newState;
-            });
-        };
-
+        // 渲染图层树
         const renderLayerTree = (layers: Layer[], parentPath = '', indent = 0) => {
             return layers.map((layer, index) => {
                 const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
@@ -412,53 +302,6 @@ const Adjust = () => {
                 </div>
             </div>
         );
-    };
-
-    // 创建快照功能
-    const handleCreateSnapshot = async () => {
-        try {
-            if (app.activeDocument) {
-                const { executeAsModal } = require("photoshop").core;
-                const { batchPlay } = require("photoshop").action;
-
-                await executeAsModal(async () => {
-                    await batchPlay(
-                        [
-                            {
-                                _obj: "make",
-                                _target: [
-                                    {
-                                        _ref: "snapshotClass"
-                                    }
-                                ],
-                                from: {
-                                    _ref: "historyState",
-                                    _property: "currentHistoryState"
-                                },
-                                name: "拆分调整前",
-                                using: {
-                                    _enum: "historyState",
-                                    _value: "fullDocument"
-                                },
-                                _options: {
-                                    dialogOptions: "dontDisplay"
-                                }
-                            }
-                        ],
-                        {}
-                    );
-                }, {"commandName": "创建快照"});
-                const { showAlert } = require("photoshop").core;
-                showAlert({ message: '快照创建成功！' });
-            } else {
-                const { showAlert } = require("photoshop").core;
-                showAlert({ message: '没有活动的文档，无法创建快照' });
-            }
-        } catch (error) {
-            console.error('创建快照失败:', error);
-            const { showAlert } = require("photoshop").core;
-            showAlert({ message: `创建快照失败: ${error.message}` });
-        }
     };
 
     return {
