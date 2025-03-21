@@ -38,7 +38,6 @@ const MainContainer: React.FC = () => {
         }}>
             <div className="left-section" style={{ 
                 width: '50%',
-                borderRight: '1px solid #444',
                 display: 'flex',
                 flexDirection: 'column'
             }}>
