@@ -1,22 +1,101 @@
 import React, { useState, useEffect } from 'react';
 import { adjustmentMenuItems } from '../constants';
+import { findSampleLayer, createSampleLayer } from '../utils/layerUtils';
+import { app } from 'photoshop';
 
 interface AdjustmentMenuProps {
     isRecording: boolean;
-    onAdjustmentClick: (item: any) => void;
+    onAdjustmentClick: (item: {
+        id: string;
+        name: string;
+        command: string;
+    }) => Promise<void>;
+    onDirectAdjustment: (item: {
+        id: string;
+        name: string;
+        command: string;
+    }) => Promise<void>;
 }
 
-export const AdjustmentMenu: React.FC<AdjustmentMenuProps> = ({ isRecording, onAdjustmentClick }) => {
+// 修改组件的 props 解构
+export const AdjustmentMenu: React.FC<AdjustmentMenuProps> = ({ 
+    isRecording, 
+    onAdjustmentClick,
+    onDirectAdjustment 
+}) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     
     const toggleMenu = () => {
         setIsMenuOpen(!isMenuOpen);
     };
     
-    const handleMenuItemClick = (item: any, event: React.MouseEvent) => {
+    const handleMenuItemClick = async (item: any, event: React.MouseEvent) => {
         event.stopPropagation();
         if (!isRecording) {
-            onAdjustmentClick(item);
+            try {
+                const { executeAsModal, showAlert } = require("photoshop").core;
+                const { batchPlay } = require("photoshop").action;
+
+                // 检查是否存在样本图层
+                const sampleLayer = await findSampleLayer();
+                let targetLayer = sampleLayer;
+
+                if (!targetLayer) {
+                    const smartObjId = await createSampleLayer();
+                    targetLayer = app.activeDocument.layers.find(layer => layer.id === smartObjId);
+                }
+
+                if (targetLayer) {
+                    await executeAsModal(async () => {
+                        // 选中样本图层
+                        await batchPlay(
+                            [{
+                                _obj: "select",
+                                _target: [{ _ref: "layer", _id: targetLayer.id }],
+                                makeVisible: true,
+                                _options: { dialogOptions: "dontDisplay" }
+                            }],
+                            { synchronousExecution: true }
+                        );
+
+                        // 记录调整前的智能滤镜数量
+                        const beforeFilters = await batchPlay([{
+                            _obj: "get",
+                            _target: [{ _ref: "layer", _id: targetLayer.id }],
+                            _options: { dialogOptions: "dontDisplay" }
+                        }], { synchronousExecution: true });
+                        
+                        const beforeFilterCount = beforeFilters[0]?.smartObject?.filterFX?.length || 0;
+
+                        // 直接对样本图层应用调整
+                        await batchPlay(
+                            [{
+                                _obj: item.command,
+                                _options: { dialogOptions: "display" }
+                            }],
+                            { synchronousExecution: true }
+                        );
+
+                        // 检查调整后的智能滤镜数量
+                        const afterFilters = await batchPlay([{
+                            _obj: "get",
+                            _target: [{ _ref: "layer", _id: targetLayer.id }],
+                            _options: { dialogOptions: "dontDisplay" }
+                        }], { synchronousExecution: true });
+                        
+                        const afterFilterCount = afterFilters[0]?.smartObject?.filterFX?.length || 0;
+
+                        // 只有当智能滤镜数量增加时才记录调整
+                        if (afterFilterCount > beforeFilterCount) {
+                            await onDirectAdjustment(item);
+                        }
+                    }, { "commandName": `直接应用${item.name}调整` });
+                }
+            } catch (error) {
+                console.error('处理调整图层失败:', error);
+                const { showAlert } = require("photoshop").core;
+                showAlert({ message: `添加调整失败: ${error.message}` });
+            }
         }
         setIsMenuOpen(false);
     };

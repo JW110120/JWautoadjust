@@ -1,12 +1,12 @@
 // 在 MainContainer.tsx 中修改
 import React, { useContext, useEffect, useState } from 'react';
 import { AdjustmentStepsContext } from './AdjustmentStepsContext';
-import { useRecord } from './RecordArea';
+import { useRecord, RecordArea, AdjustmentMenu, DeleteButtonWrapper as DeleteButton } from './RecordArea';
 import FileArea from './FileArea';  // 修改导入方式
 
 const MainContainer: React.FC = () => {
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
-    const { startRecording, stopRecording, isRecording, AdjustmentMenu, DeleteButton } = useRecord();
+    const { isRecording, startRecording, stopRecording } = useRecord();
     const { LayerTreeComponent, handleCreateSnapshot, applyAdjustments } = FileArea();  // 修改使用方式
     const [selectedStepIndex, setSelectedStepIndex] = useState(-1);
 
@@ -75,24 +75,17 @@ const MainContainer: React.FC = () => {
                     overflowY: 'auto',
                     backgroundColor: '#222'
                 }}>
-                    <ul className="operation-list" style={{ 
-                        listStyle: 'none', 
-                        padding: '0', 
-                        margin: '0' 
-                    }}>
+                    <ul className="operation-list">
                         {adjustmentSteps.map((step, index) => (
                             <li 
                                 key={index}
                                 onClick={() => handleStepClick(index)}
-                                style={{ 
-                                    padding: '10px 15px',
-                                    borderBottom: '1px solid #333',
-                                    color: index === selectedStepIndex ? '#fff' : '#ccc',
-                                    backgroundColor: index === selectedStepIndex ? '#0078d7' : 'transparent',
-                                    cursor: 'pointer'
-                                }}
+                                className={index === selectedStepIndex ? 'selected' : ''}
                             >
-                                {`${index + 1}.${displayNames[step] || step}`}
+                                <span className="step-number">
+                                    {adjustmentSteps.length - index}.
+                                </span>
+                                <span className="step-name">{displayNames[step] || step}</span>
                             </li>
                         ))}
                     </ul>
@@ -119,7 +112,13 @@ const MainContainer: React.FC = () => {
                     >
                         <span style={{ marginRight: '5px' }}>⏺</span> {isRecording ? '停止' : '记录'}
                     </button>
-                    <DeleteButton />
+                    {/* 修改这里，传递必要的属性 */}
+                    <DeleteButton 
+                        isRecording={isRecording}
+                        hasSteps={adjustmentSteps.length > 0}
+                        onDelete={() => selectedStepIndex >= 0 ? handleDeleteStep(selectedStepIndex) : null}
+                        index={selectedStepIndex}
+                    />
                 </div>
             </div>
             {/* 右侧部分保持不变 */}

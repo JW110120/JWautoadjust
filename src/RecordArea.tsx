@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { app } from 'photoshop';
 import { useAdjustmentSteps } from './AdjustmentStepsContext';
-import { AdjustmentMenu } from './components/AdjustmentMenu';
+import { AdjustmentMenu as AdjustmentMenuComponent } from './components/AdjustmentMenu';
 import { DeleteButton } from './components/DeleteButton';
 import { eventToNameMap } from './constants';
 import { createSampleLayer } from './utils/layerUtils';
 
+// 录制区域组件
 export const useRecord = () => {
     const { adjustmentSteps, addAdjustmentStep, deleteAdjustmentStep, clearAllSteps } = useAdjustmentSteps();
     const [isRecording, setIsRecording] = useState(false);
@@ -19,7 +20,7 @@ export const useRecord = () => {
     }, [isRecording]);
     
     useEffect(() => {
-        console.log('useRecord中的adjustmentSteps更新:', adjustmentSteps);
+        console.log('RecordArea中的adjustmentSteps更新:', adjustmentSteps);
     }, [adjustmentSteps]);
 
     const syncAdjustmentLayers = async (layerId = null) => {
@@ -27,33 +28,28 @@ export const useRecord = () => {
             const doc = app.activeDocument;
             const targetLayerId = layerId || sampleLayerId;
             
-            if (!doc || !targetLayerId) {
-                return;
-            }
+            if (!doc || !targetLayerId) return;
 
             clearAllSteps();
             const allLayers = doc.layers;
             
             const sampleLayer = allLayers.find(layer => layer.id === targetLayerId);
-            if (!sampleLayer) {
-                return;
-            }
+            if (!sampleLayer) return;
             
             const adjustmentLayers = [];
             
+            // 收集调整图层
             for (let i = 0; i < allLayers.length; i++) {
                 const layer = allLayers[i];
-                if (layer.id === targetLayerId) {
-                    break;
-                }
+                if (layer.id === targetLayerId) break;
                 if (layer.kind === 'adjustmentLayer' || layer.adjustmentType) {
                     adjustmentLayers.push(layer);
                 }
             }
             
-            adjustmentLayers.reverse();
-            
-            for (const layer of adjustmentLayers) {
+            // 从上到下添加调整图层记录（不需要reverse）
+            for (let i = 0; i < adjustmentLayers.length; i++) {
+                const layer = adjustmentLayers[i];
                 let adjustmentType = '';
                 
                 for (const [command, name] of Object.entries(eventToNameMap)) {
@@ -71,12 +67,11 @@ export const useRecord = () => {
                     adjustmentType = layer.name;
                 }
                 
-                const timestamp = new Date().getTime() - (adjustmentLayers.length - adjustmentLayers.indexOf(layer)) * 1000;
+                const timestamp = new Date().getTime() - (adjustmentLayers.length - i) * 1000;
                 const step = `${adjustmentType} (${timestamp})`;
                 
-                addAdjustmentStep(step, adjustmentType);
+                addAdjustmentStep(step, adjustmentType, true); // 添加 true 参数，确保新记录添加到开头
             }
-            
         } catch (error) {
             console.error('同步调整图层失败:', error);
         }
@@ -84,17 +79,13 @@ export const useRecord = () => {
 
     const startRecording = async () => {
         const doc = app.activeDocument;
-        if (!doc) {
-            return;
-        }
+        if (!doc) return;
         
         const { executeAsModal, showAlert } = require("photoshop").core;
         const { batchPlay, addNotificationListener } = require("photoshop").action;
     
         try {
-            setIsRecording(true);
-            isRecordingRef.current = true;
-            
+            // 首先查找现有的样本图层
             let existingSampleLayer = doc.layers.find(layer => 
                 layer.name === "样本图层" && layer.kind === "smartObject"
             );
@@ -103,20 +94,8 @@ export const useRecord = () => {
                 const layerId = existingSampleLayer.id;
                 setSampleLayerId(layerId);
                 
-                await executeAsModal(async () => {
-                    await batchPlay(
-                        [{
-                            _obj: "select",
-                            _target: [{ _ref: "layer", _id: layerId }],
-                            makeVisible: true,
-                            _options: { dialogOptions: "dontDisplay" }
-                        }],
-                        { synchronousExecution: true }
-                    );
-                }, {"commandName": "选择已存在的样本图层"});
-                
+                // 同步现有的智能滤镜
                 await syncAdjustmentLayers(layerId);
-                
             } else {
                 clearAllSteps();
                 try {
@@ -124,18 +103,19 @@ export const useRecord = () => {
                     setSampleLayerId(smartObjId);
                 } catch (error) {
                     showAlert({ message: `创建样本图层失败: ${error.message}` });
-                    setIsRecording(false);
-                    isRecordingRef.current = false;
                     return;
                 }
             }
+
+            // 设置录制状态
+            setIsRecording(true);
+            isRecordingRef.current = true;
     
+            // 添加监听器
             const adjustmentListener = await addNotificationListener(
                 ['all'],
                 function(event, descriptor) {
-                    if (!isRecordingRef.current) {
-                        return;
-                    }
+                    if (!isRecordingRef.current) return;
                     
                     let stepName = eventToNameMap[event] || 
                                  (descriptor?._obj && eventToNameMap[descriptor._obj]);
@@ -144,15 +124,13 @@ export const useRecord = () => {
                         const timestamp = new Date().getTime();
                         const stepType = `${stepName} (${timestamp})`;
                         
-                        setTimeout(() => {
-                            addAdjustmentStep(stepType, stepName);
-                        }, 0);
+                        // 直接添加到数组开头
+                        addAdjustmentStep(stepType, stepName, true);
                     }
                 }
             );
     
             setNotificationListeners([adjustmentListener]);
-            
         } catch (error) {
             showAlert({ message: `开始录制失败: ${error?.message || '未知错误'}` });
             setIsRecording(false);
@@ -171,7 +149,6 @@ export const useRecord = () => {
                 }
             });
             setNotificationListeners([]);
-            
         } catch (error) {
             console.error('停止录制失败:', error);
         }
@@ -220,7 +197,6 @@ export const useRecord = () => {
             setTimeout(() => {
                 addAdjustmentStep(step, adjustmentItem.name);
             }, 0);
-
         } catch (error) {
             console.error('应用调整失败:', error);
             const { showAlert } = require("photoshop").core;
@@ -229,9 +205,7 @@ export const useRecord = () => {
     };
 
     const deleteAdjustmentAndLayer = async (index) => {
-        if (isRecording || !app.activeDocument) {
-            return;
-        }
+        if (isRecording || !app.activeDocument) return;
 
         const { executeAsModal, showAlert } = require("photoshop").core;
         const { batchPlay } = require("photoshop").action;
@@ -245,9 +219,7 @@ export const useRecord = () => {
                     
                     for (let i = 0; i < allLayers.length; i++) {
                         const layer = allLayers[i];
-                        if (layer.id === sampleLayerId) {
-                            break;
-                        }
+                        if (layer.id === sampleLayerId) break;
                         if (layer.kind === 'adjustmentLayer' || layer.adjustmentType) {
                             adjustmentLayers.push(layer);
                         }
@@ -294,21 +266,197 @@ export const useRecord = () => {
             }
 
             deleteAdjustmentStep(index);
-
         } catch (error) {
             console.error('删除调整失败:', error);
             showAlert({ message: `删除调整失败: ${error.message}` });
         }
     };
 
+    // 修改 addAdjustmentStep 的调用方式，改为在数组开头添加新记录
+    const applyDirectAdjustment = async (adjustmentItem) => {
+        try {
+            const timestamp = new Date().getTime();
+            const step = `${adjustmentItem.name} (${timestamp})`;
+            
+            // 移除 setTimeout，直接添加到数组开头
+            addAdjustmentStep(step, adjustmentItem.name, true); // 添加 true 参数表示添加到开头
+        } catch (error) {
+            console.error('记录直接调整失败:', error);
+            const { showAlert } = require("photoshop").core;
+            showAlert({ message: `记录调整失败: ${error.message}` });
+        }
+    };
+
+    // 修改开始录制的逻辑
+    const startRecording = async () => {
+        const doc = app.activeDocument;
+        if (!doc) return;
+        
+        const { executeAsModal, showAlert } = require("photoshop").core;
+        const { batchPlay, addNotificationListener } = require("photoshop").action;
+    
+        try {
+            // 首先查找现有的样本图层
+            let existingSampleLayer = doc.layers.find(layer => 
+                layer.name === "样本图层" && layer.kind === "smartObject"
+            );
+            
+            if (existingSampleLayer) {
+                const layerId = existingSampleLayer.id;
+                setSampleLayerId(layerId);
+                
+                // 同步现有的智能滤镜
+                await syncAdjustmentLayers(layerId);
+            } else {
+                clearAllSteps();
+                try {
+                    const smartObjId = await createSampleLayer();
+                    setSampleLayerId(smartObjId);
+                } catch (error) {
+                    showAlert({ message: `创建样本图层失败: ${error.message}` });
+                    return;
+                }
+            }
+
+            // 设置录制状态
+            setIsRecording(true);
+            isRecordingRef.current = true;
+    
+            // 添加监听器
+            const adjustmentListener = await addNotificationListener(
+                ['all'],
+                function(event, descriptor) {
+                    if (!isRecordingRef.current) return;
+                    
+                    let stepName = eventToNameMap[event] || 
+                                 (descriptor?._obj && eventToNameMap[descriptor._obj]);
+                    
+                    if (stepName) {
+                        const timestamp = new Date().getTime();
+                        const stepType = `${stepName} (${timestamp})`;
+                        
+                        // 直接添加到数组开头
+                        addAdjustmentStep(stepType, stepName, true);
+                    }
+                }
+            );
+    
+            setNotificationListeners([adjustmentListener]);
+        } catch (error) {
+            showAlert({ message: `开始录制失败: ${error?.message || '未知错误'}` });
+            setIsRecording(false);
+            isRecordingRef.current = false;
+        }
+    };
+
+    // 样本图层监听器
+    useEffect(() => {
+        if (isRecording && sampleLayerId) {
+            const checkSampleLayer = setInterval(() => {
+                const doc = app.activeDocument;
+                if (!doc) return;
+
+                const sampleLayerExists = doc.layers.some(layer => 
+                    layer.id === sampleLayerId && 
+                    layer.name === "样本图层" && 
+                    layer.kind === "smartObject"
+                );
+
+                if (!sampleLayerExists) {
+                    console.log('样本图层被删除，停止录制');
+                    stopRecording();
+                    clearAllSteps();
+                    setSampleLayerId(null);
+                }
+            }, 500);
+
+            return () => clearInterval(checkSampleLayer);
+        }
+    }, [isRecording, sampleLayerId]);
+
+    // 将 AdjustmentMenu 组件定义为独立组件
+    const AdjustmentMenuWrapper = React.memo(() => {
+        return (
+            <AdjustmentMenuComponent
+                isRecording={isRecording}
+                onAdjustmentClick={applyAdjustment}
+                onDirectAdjustment={applyDirectAdjustment}
+            />
+        );
+    });
+
     return {
         startRecording,
         stopRecording,
         isRecording,
         adjustmentSteps,
-        AdjustmentMenu,
-        DeleteButton,
         applyAdjustment,
-        deleteAdjustmentAndLayer
+        deleteAdjustmentAndLayer,
+        sampleLayerId,
+        setSampleLayerId,
+        applyDirectAdjustment
     };
+};
+
+// 导出独立的 AdjustmentMenu 组件
+export const AdjustmentMenu = () => {
+    const {
+        isRecording,
+        applyAdjustment,
+        applyDirectAdjustment
+    } = useRecord();
+
+    return (
+        <AdjustmentMenuComponent
+            isRecording={isRecording}
+            onAdjustmentClick={applyAdjustment}
+            onDirectAdjustment={applyDirectAdjustment}
+        />
+    );
+};
+
+// 修改 RecordArea 组件
+export const RecordArea = () => {
+    const {
+        isRecording,
+        adjustmentSteps,
+        deleteAdjustmentAndLayer,
+    } = useRecord();
+
+    return (
+        <div className="record-panel">
+            <div className="controls">
+                <AdjustmentMenu />
+            </div>
+            
+            <div className="adjustment-list">
+                {adjustmentSteps.map((step, index) => (
+                    <div key={index} className="adjustment-item">
+                        <span className="step-number">
+                            {adjustmentSteps.length - index}.
+                        </span>
+                        <span className="step-name">{step}</span>
+                        <DeleteButton
+                            isRecording={isRecording}
+                            hasSteps={adjustmentSteps.length > 0}
+                            onDelete={() => deleteAdjustmentAndLayer(index)}
+                            index={index}
+                        />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// 导出 DeleteButton 组件
+export const DeleteButtonWrapper = ({ isRecording, hasSteps, onDelete, index }) => {
+    return (
+        <DeleteButton
+            isRecording={isRecording}
+            hasSteps={hasSteps}
+            onDelete={onDelete}
+            index={index}
+        />
+    );
 };

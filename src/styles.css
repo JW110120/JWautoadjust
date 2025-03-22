@@ -100,19 +100,42 @@ body {
 
 .operation-list {
   list-style: none;
-  max-height: calc(100vh - 250px); /* 设置最大高度 */
-  overflow-y: auto; /* 添加滚动条 */
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+  padding: 0;
+  margin: 0;
 }
 
 .operation-list li {
-  padding: 5px;
+  padding: 10px 15px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #333;
+  color: #ccc;
+}
+
+.operation-list li.selected {
+  background-color: #0078d7;
+  color: #fff;
+}
+
+.operation-list .step-number {
+  color: inherit;
+  margin-right: 4px;
+  font-size: 10px;
+  min-width: 16px;
+}
+
+.operation-list li.selected .step-number {
+  color: #fff;
 }
 
 .operation-list li.selected {
   background: #333;
   border-left: 3px solid #0099ff;
 }
+
 
 .layer-section {
   border: 2px solid #444;

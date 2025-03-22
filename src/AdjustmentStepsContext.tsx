@@ -4,7 +4,7 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 export const AdjustmentStepsContext = createContext({
     adjustmentSteps: [],
     displayNames: {},
-    addAdjustmentStep: (step: string, displayName?: string) => {},
+    addAdjustmentStep: (step: string, displayName?: string, addToStart?: boolean) => {},
     deleteAdjustmentStep: (index: number) => {},
     clearAllSteps: () => {}
 });
@@ -20,8 +20,8 @@ export const AdjustmentStepsProvider = ({ children }) => {
     }, [adjustmentSteps]);
 
     // 修改：添加防重复逻辑的 addAdjustmentStep 函数
-    const addAdjustmentStep = (step, displayName) => {
-        console.log('尝试添加步骤:', step, '显示名称:', displayName);
+    const addAdjustmentStep = (step, displayName, addToStart = false) => {
+        console.log('尝试添加步骤:', step, '显示名称:', displayName, '添加到开头:', addToStart);
         
         // 提取步骤名称（不包含时间戳）
         const stepNameMatch = step.match(/(.*) \(\d+\)/);
@@ -62,7 +62,8 @@ export const AdjustmentStepsProvider = ({ children }) => {
                 }));
             }
             
-            return [...prevSteps, step];
+            // 根据 addToStart 参数决定添加位置
+            return addToStart ? [step, ...prevSteps] : [...prevSteps, step];
         });
     };
 
