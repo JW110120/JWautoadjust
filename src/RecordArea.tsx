@@ -36,41 +36,28 @@ export const useRecord = () => {
             const sampleLayer = allLayers.find(layer => layer.id === targetLayerId);
             if (!sampleLayer) return;
             
-            const adjustmentLayers = [];
+            // 获取智能滤镜信息
+            const { batchPlay } = require("photoshop").action;
+            const result = await batchPlay([{
+                _obj: "get",
+                _target: [{ _ref: "layer", _id: targetLayerId }],
+                _options: { dialogOptions: "dontDisplay" }
+            }], { synchronousExecution: true });
+
+            console.log('滤镜信息:', result[0]?.smartObject?.filterFX);
             
-            // 收集调整图层
-            for (let i = 0; i < allLayers.length; i++) {
-                const layer = allLayers[i];
-                if (layer.id === targetLayerId) break;
-                if (layer.kind === 'adjustmentLayer' || layer.adjustmentType) {
-                    adjustmentLayers.push(layer);
-                }
-            }
+            const filterFX = result[0]?.smartObject?.filterFX || [];
             
-            // 从上到下添加调整图层记录（不需要reverse）
-            for (let i = 0; i < adjustmentLayers.length; i++) {
-                const layer = adjustmentLayers[i];
-                let adjustmentType = '';
+            // 从上到下添加滤镜记录
+            for (let i = 0; i < filterFX.length; i++) {
+                const filter = filterFX[i];
+                // 使用 name 属性而不是 _obj
+                const filterName = filter.name.split('...')[0].trim();  // 移除省略号及后面的内容
                 
-                for (const [command, name] of Object.entries(eventToNameMap)) {
-                    if (layer.name.includes(name)) {
-                        adjustmentType = name;
-                        break;
-                    }
-                }
+                const timestamp = new Date().getTime() - (filterFX.length - i) * 1000;
+                const step = `${filterName} (${timestamp})`;
                 
-                if (!adjustmentType && layer.adjustmentType) {
-                    adjustmentType = eventToNameMap[layer.adjustmentType] || layer.adjustmentType;
-                }
-                
-                if (!adjustmentType) {
-                    adjustmentType = layer.name;
-                }
-                
-                const timestamp = new Date().getTime() - (adjustmentLayers.length - i) * 1000;
-                const step = `${adjustmentType} (${timestamp})`;
-                
-                addAdjustmentStep(step, adjustmentType, true); // 添加 true 参数，确保新记录添加到开头
+                addAdjustmentStep(step, filterName, true);
             }
         } catch (error) {
             console.error('同步调整图层失败:', error);

@@ -11,16 +11,11 @@ export const DeleteButton: React.FC<DeleteButtonProps> = ({ isRecording, hasStep
     // 简化判断逻辑，不再检查index是否为数字
     const isDeleteEnabled = !isRecording && hasSteps;
     
-    // 添加更详细的调试信息
-    console.log('DeleteButton props:', { isRecording, hasSteps, index, isEnabled: isDeleteEnabled });
-    
     return (
         <button 
             onClick={() => {
-                console.log('DeleteButton clicked, enabled:', isDeleteEnabled, 'index:', index);
                 if (isDeleteEnabled) {
                     onDelete();
-                    console.log('onDelete 函数已调用');
                 }
             }}
             style={{ 
