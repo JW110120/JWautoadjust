@@ -1,12 +1,13 @@
 // 在 MainContainer.tsx 中修改
 import React, { useContext, useEffect, useState } from 'react';
 import { AdjustmentStepsContext } from './AdjustmentStepsContext';
-import { useRecord } from './record';
-import Adjust from './adjust';
+import { useRecord } from './RecordArea';
+import FileArea from './FileArea';  // 修改导入方式
 
 const MainContainer: React.FC = () => {
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
     const { startRecording, stopRecording, isRecording, AdjustmentMenu, DeleteButton } = useRecord();
+    const { LayerTreeComponent, handleCreateSnapshot, applyAdjustments } = FileArea();  // 修改使用方式
     const [selectedStepIndex, setSelectedStepIndex] = useState(-1);
 
     // 添加调试日志
@@ -14,7 +15,8 @@ const MainContainer: React.FC = () => {
         console.log('MainContainer中的adjustmentSteps:', adjustmentSteps);
     }, [adjustmentSteps]);
 
-    const adjustInstance = Adjust();
+    // 删除这一行
+    // const adjustInstance = Adjust();
     // 处理记录按钮点击
     const handleRecordClick = async () => {
         try {
@@ -134,8 +136,8 @@ const MainContainer: React.FC = () => {
                 }}>
                     <p style={{ margin: '0', fontSize: '16px', fontWeight: 'bold' }}>待执行图层</p>
                 </div>
-                {/* 使用Adjust组件的LayerTreeComponent */}
-                {adjustInstance.LayerTreeComponent && <adjustInstance.LayerTreeComponent />}
+                {/* 更新组件使用方式 */}
+                {LayerTreeComponent && <LayerTreeComponent />}
                 <div className="right-bottom-buttons" style={{ 
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -144,7 +146,7 @@ const MainContainer: React.FC = () => {
                     borderTop: '1px solid #444'
                 }}>
                     <button 
-                        onClick={adjustInstance.handleCreateSnapshot}
+                        onClick={handleCreateSnapshot}
                         style={{ 
                             backgroundColor: '#444',
                             border: 'none',
@@ -157,7 +159,7 @@ const MainContainer: React.FC = () => {
                         <span style={{ marginRight: '5px' }}>📷</span> 新建快照
                     </button>
                     <button 
-                        onClick={adjustInstance.applyAdjustments}
+                        onClick={applyAdjustments}
                         style={{ 
                             backgroundColor: '#444',
                             border: 'none',
