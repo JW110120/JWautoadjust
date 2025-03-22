@@ -1,100 +1,104 @@
-import React, { useState, createContext, useContext, useCallback, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 
-// 定义上下文的类型
-interface AdjustmentStepsContextType {
-    adjustmentSteps: string[];
-    displayNames: Record<string, string>; // 新增：存储显示名称的映射
-    addAdjustmentStep: (step: string, displayName?: string) => void;
-    deleteAdjustmentStep: (index: number) => void;
-    clearAllSteps: () => void;
-}
-
-// 创建上下文对象，提供默认值避免未定义错误
-export const AdjustmentStepsContext = createContext<AdjustmentStepsContextType>({
+// 创建上下文
+export const AdjustmentStepsContext = createContext({
     adjustmentSteps: [],
-    displayNames: {}, // 新增：默认空映射
-    addAdjustmentStep: () => console.warn('AdjustmentStepsContext 未提供实现'),
-    deleteAdjustmentStep: () => console.warn('AdjustmentStepsContext 未提供实现'),
-    clearAllSteps: () => console.warn('AdjustmentStepsContext 未提供实现')
+    displayNames: {},
+    addAdjustmentStep: (step: string, displayName?: string) => {},
+    deleteAdjustmentStep: (index: number) => {},
+    clearAllSteps: () => {}
 });
 
-// 创建 Provider 组件
-export const AdjustmentStepsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    // 使用ref来跟踪最新的状态，避免闭包问题
-    const [adjustmentSteps, setAdjustmentSteps] = useState<string[]>([]);
-    const [displayNames, setDisplayNames] = useState<Record<string, string>>({}); // 新增：存储显示名称
-    const stepsRef = React.useRef<string[]>([]);
+// 创建提供者组件
+export const AdjustmentStepsProvider = ({ children }) => {
+    const [adjustmentSteps, setAdjustmentSteps] = useState([]);
+    const [displayNames, setDisplayNames] = useState({});
     
-    // 当状态更新时，同步更新ref
+    // 添加调试日志
     useEffect(() => {
-        stepsRef.current = adjustmentSteps;
         console.log('Provider中的adjustmentSteps更新:', adjustmentSteps);
     }, [adjustmentSteps]);
 
-    // 添加调整步骤 - 使用ref确保访问最新状态
-    const addAdjustmentStep = useCallback((step: string, displayName?: string) => {
-        console.log('Provider - 添加步骤:', step, '显示名称:', displayName, '当前步骤:', stepsRef.current);
+    // 修改：添加防重复逻辑的 addAdjustmentStep 函数
+    const addAdjustmentStep = (step, displayName) => {
+        console.log('尝试添加步骤:', step, '显示名称:', displayName);
         
-        // 如果提供了显示名称，更新显示名称映射
-        if (displayName) {
-            setDisplayNames(prev => ({
-                ...prev,
-                [step]: displayName
-            }));
-        }
+        // 提取步骤名称（不包含时间戳）
+        const stepNameMatch = step.match(/(.*) \(\d+\)/);
+        const stepName = stepNameMatch ? stepNameMatch[1] : step;
         
+        // 检查是否在短时间内（2秒）添加了相同类型的步骤
         setAdjustmentSteps(prevSteps => {
-            // 确保我们使用最新的状态
-            const newSteps = [...prevSteps, step];
-            return newSteps;
-        });
-    }, []);
-
-    // 删除调整步骤
-    const deleteAdjustmentStep = useCallback((index: number) => {
-        console.log('Provider - 删除步骤索引:', index);
-        
-        setAdjustmentSteps(prevSteps => {
-            const newSteps = [...prevSteps];
-            const removedStep = newSteps.splice(index, 1)[0];
+            const now = Date.now();
             
-            // 从显示名称映射中移除
-            if (removedStep) {
-                setDisplayNames(prev => {
-                    const newDisplayNames = {...prev};
-                    delete newDisplayNames[removedStep];
-                    return newDisplayNames;
-                });
+            // 检查是否有重复
+            const isDuplicate = prevSteps.some(existingStep => {
+                // 提取现有步骤的名称和时间戳
+                const match = existingStep.match(/(.*) \((\d+)\)/);
+                if (match) {
+                    const existingName = match[1];
+                    const existingTimestamp = parseInt(match[2]);
+                    
+                    // 如果名称相同且时间戳在2秒内，认为是重复
+                    return existingName === stepName && (now - existingTimestamp < 100);
+                }
+                return false;
+            });
+            
+            // 如果是重复的，返回原数组，不做更改
+            if (isDuplicate) {
+                console.log('检测到重复步骤，忽略:', step);
+                return prevSteps;
             }
             
+            // 如果不是重复的，添加新步骤
+            console.log('添加新步骤:', step);
+            
+            // 如果提供了显示名称，更新displayNames
+            if (displayName) {
+                setDisplayNames(prev => ({
+                    ...prev,
+                    [step]: displayName
+                }));
+            }
+            
+            return [...prevSteps, step];
+        });
+    };
+
+    // 删除步骤
+    const deleteAdjustmentStep = (index) => {
+        console.log('删除步骤，索引:', index);
+        setAdjustmentSteps(prevSteps => {
+            const newSteps = [...prevSteps];
+            newSteps.splice(index, 1);
             return newSteps;
         });
-    }, []);
+    };
 
     // 清空所有步骤
-    const clearAllSteps = useCallback(() => {
-        console.log('Provider - 清空所有步骤');
+    const clearAllSteps = () => {
+        console.log('清空所有步骤');
         setAdjustmentSteps([]);
-        setDisplayNames({}); // 清空显示名称映射
-    }, []);
-
-    // 创建一个稳定的上下文值对象
-    const contextValue = React.useMemo(() => ({
-        adjustmentSteps,
-        displayNames,
-        addAdjustmentStep,
-        deleteAdjustmentStep,
-        clearAllSteps
-    }), [adjustmentSteps, displayNames, addAdjustmentStep, deleteAdjustmentStep, clearAllSteps]);
+        setDisplayNames({});
+    };
 
     return (
-        <AdjustmentStepsContext.Provider value={contextValue}>
+        <AdjustmentStepsContext.Provider 
+            value={{ 
+                adjustmentSteps, 
+                displayNames,
+                addAdjustmentStep, 
+                deleteAdjustmentStep,
+                clearAllSteps
+            }}
+        >
             {children}
         </AdjustmentStepsContext.Provider>
     );
 };
 
-// 自定义Hook
-export const useAdjustmentSteps = () => useContext(AdjustmentStepsContext);
-
-export default AdjustmentStepsContext;
+// 创建自定义钩子
+export const useAdjustmentSteps = () => {
+    return useContext(AdjustmentStepsContext);
+};

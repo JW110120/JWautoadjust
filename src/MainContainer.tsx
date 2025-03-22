@@ -1,3 +1,4 @@
+// 在 MainContainer.tsx 中修改
 import React, { useContext, useEffect, useState } from 'react';
 import { AdjustmentStepsContext } from './AdjustmentStepsContext';
 import { useRecord } from './record';
@@ -5,8 +6,8 @@ import Adjust from './adjust';
 
 const MainContainer: React.FC = () => {
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
-    const { startRecording, stopRecording, isRecording, AdjustmentMenu } = useRecord();
-    const [selectedStepIndex, setSelectedStepIndex] = useState(-1); // 添加选中项状态
+    const { startRecording, stopRecording, isRecording, AdjustmentMenu, DeleteButton } = useRecord();
+    const [selectedStepIndex, setSelectedStepIndex] = useState(-1);
 
     // 添加调试日志
     useEffect(() => {
@@ -94,7 +95,7 @@ const MainContainer: React.FC = () => {
                         ))}
                     </ul>
                 </div>
-                {/* 按钮区域 */}
+                {/* 按钮区域 - 使用新的 DeleteButton 组件 */}
                 <div className="bottom-buttons" style={{ 
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -102,7 +103,6 @@ const MainContainer: React.FC = () => {
                     backgroundColor: '#333',
                     borderTop: '1px solid #444'
                 }}>
-                    {/* 替换原来的新增按钮为下拉菜单组件 */}
                     <AdjustmentMenu />
                     <button 
                         onClick={handleRecordClick}
@@ -115,29 +115,9 @@ const MainContainer: React.FC = () => {
                             cursor: 'pointer'
                         }}
                     >
-                        <span style={{ marginRight: '5px' }}>⏺</span> 记录
+                        <span style={{ marginRight: '5px' }}>⏺</span> {isRecording ? '停止' : '记录'}
                     </button>
-                    <button 
-                        onClick={() => {
-                            // 删除选中的步骤
-                            if (selectedStepIndex >= 0) {
-                                handleDeleteStep(selectedStepIndex);
-                            } else if (adjustmentSteps.length > 0) {
-                                // 如果没有选中项，则删除最后一个
-                                handleDeleteStep(adjustmentSteps.length - 1);
-                            }
-                        }}
-                        style={{ 
-                            backgroundColor: '#444',
-                            border: 'none',
-                            color: '#fff',
-                            padding: '8px 8px',
-                            borderRadius: '4px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <span style={{ marginRight: '5px' }}>🗑</span> 删除
-                    </button>
+                    <DeleteButton />
                 </div>
             </div>
             {/* 右侧部分保持不变 */}
