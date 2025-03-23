@@ -250,7 +250,7 @@ const MainContainerContent: React.FC = () => {
                 }}
                 title="编辑混合选项"
             >
-                <span style={{ marginRight: '4px' }}>⚙️</span>
+                <span>⚙️</span>
                 混合
             </button>
         </li>
@@ -314,7 +314,7 @@ const MainContainerContent: React.FC = () => {
                                     }}
                                     title="编辑混合选项"
                                 >
-                                    <span style={{ marginRight: '4px' }}>⚙️</span>
+                                    <span>B</span>
                                 </button>
                             </li>
                         ))}

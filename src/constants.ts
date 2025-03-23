@@ -15,7 +15,8 @@ export const adjustmentMenuItems = [
     { id: 'posterize', name: '色调分离', command: 'posterize' },
     { id: 'threshold', name: '阈值', command: 'threshold' },
     { id: 'gradientMap', name: '渐变映射', command: 'gradientMapEvent' },
-    { id: 'selectiveColor', name: '可选颜色', command: 'selectiveColor' }
+    { id: 'selectiveColor', name: '可选颜色', command: 'selectiveColor' },
+    { id: 'average', name: '平均', command: 'average' }
 ];
 
 // 创建事件到名称的映射
@@ -36,5 +37,6 @@ export const eventToNameMap = {
     'posterize': '色调分离',
     'threshold': '阈值',
     'gradientMapEvent': '渐变映射',
-    'selectiveColor': '可选颜色'
+    'selectiveColor': '可选颜色',
+    'average': '平均'
 };
