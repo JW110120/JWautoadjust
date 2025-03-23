@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { app } from 'photoshop';
-import { useAdjustmentSteps } from './AdjustmentStepsContext';
+import { useAdjustmentSteps } from './contexts/AdjustmentStepsContext';
 import { AdjustmentMenu as AdjustmentMenuComponent } from './components/AdjustmentMenu';
 import { DeleteButton } from './components/DeleteButton';
 import { eventToNameMap } from './constants';

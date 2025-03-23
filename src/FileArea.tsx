@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect, useCallback } from 'react';
 import { app, Document, Layer, SmartObject, Snapshot } from 'photoshop';
-import { AdjustmentStepsContext } from './AdjustmentStepsContext';
+import { AdjustmentStepsContext } from './contexts/AdjustmentStepsContext';
 
 const FileArea = () => {
     const { adjustmentSteps } = useContext(AdjustmentStepsContext);

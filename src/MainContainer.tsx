@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { app } from 'photoshop';  // 添加这行导入
-import { AdjustmentStepsContext } from './AdjustmentStepsContext';
+import { AdjustmentStepsContext } from './contexts/AdjustmentStepsContext';
 import { useRecord, RecordArea, AdjustmentMenu, DeleteButtonWrapper as DeleteButton } from './RecordArea';
 import FileArea from './FileArea';  // 修改导入方式
 import { RecordProvider } from './contexts/RecordContext';
