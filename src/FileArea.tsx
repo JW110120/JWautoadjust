@@ -1,6 +1,8 @@
-import React, { useState, useContext, useEffect, useCallback } from 'react';
+import React, { useState, useContext, useEffect, useCallback, useRef } from 'react';
+import { useScrollPosition } from './utils/scrollUtils';
 import { app, Document, Layer, SmartObject, Snapshot } from 'photoshop';
 import { AdjustmentStepsContext } from './contexts/AdjustmentStepsContext';
+import { FaChevronDown, FaFolder } from 'react-icons/fa'; // 使用 react-icons 库
 
 const FileArea = () => {
     const { adjustmentSteps } = useContext(AdjustmentStepsContext);
@@ -14,6 +16,8 @@ const FileArea = () => {
     });
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
     const [selectedLayerPaths, setSelectedLayerPaths] = useState<Record<string, boolean>>({});
+
+    const { ref: layerListRef } = useScrollPosition(); // 使用工具函数
 
     // 获取像素图层
     const getPixelLayers = useCallback(async () => {
@@ -40,7 +44,6 @@ const FileArea = () => {
             const { batchPlay } = require("photoshop").action;
 
             await executeAsModal(async () => {
-
                 // 1. 选中并转换为智能对象
                 await batchPlay([
                     {
@@ -329,48 +332,23 @@ const FileArea = () => {
                         <div key={uniqueKey} className="group-container">
                             <div 
                                 className="group-header"
-                                style={{ 
-                                    padding: '8px 0',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                }}
+                                onClick={() => toggleGroup(currentPath)}
                             >
-                                <div 
-                                    style={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        cursor: 'pointer',
-                                        paddingLeft: '10px',
-                                        width: '100%'
-                                    }}
-                                    onClick={() => toggleGroup(currentPath)}
-                                >
-                                    <img 
-                                        src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0id2hpdGUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTggMUw2LjUgMi41TDExIDdINFY5SDExTDYuNSAxMy41TDggMTVMMTUgOEw4IDFaIi8+PC9zdmc+" 
-                                        style={{ 
-                                            width: '12px', 
-                                            height: '12px', 
-                                            marginRight: '8px',
-                                            transform: collapsedGroups[currentPath] ? 'rotate(0deg)' : 'rotate(90deg)',
-                                            transition: 'transform 0.2s'
-                                        }} 
-                                        alt="toggle"
-                                    />
-                                    <img 
-                                        src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0id2hpdGUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTIgMkgyVjE0SDE0VjE0SDJWMlpNMiAySDE0VjE0SDJWMloiLz48L3N2Zz4=" 
-                                        style={{ 
-                                            width: '16px', 
-                                            height: '16px', 
-                                            marginRight: '8px' 
-                                        }} 
-                                        alt="folder"
-                                    />
-                                    <span style={{ color: '#fff' }}>{layer.name}</span>
-                                </div>
+                                <FaChevronDown 
+                                    className={`toggle-icon ${collapsedGroups[currentPath] ? 'collapsed' : 'expanded'}`}
+                                    aria-label="toggle"
+                                    style={{ color: 'white' }} // 设置图标颜色为白色
+                                />
+                                <FaFolder 
+                                    className="folder-icon"
+                                    aria-label="folder"
+                                    style={{ color: 'white' }} // 设置图标颜色为白色
+                                />
+                                <span className="layer-name">{layer.name}</span>
                             </div>
                             {!collapsedGroups[currentPath] && (
-                                <div className="group-children" style={{ marginLeft: '20px' }}>
-                                    {renderLayerTree(layer.layers, currentPath, indent + 1)}
+                                <div className="group-children" style={{ marginLeft: `${indent + 20}px` }}>
+                                    {renderLayerTree(layer.layers, currentPath, indent + 20)}
                                 </div>
                             )}
                         </div>
@@ -380,33 +358,17 @@ const FileArea = () => {
                         <div 
                             key={uniqueKey}
                             className="layer-item"
-                            style={{ 
-                                padding: '8px 0',
-                                borderBottom: '1px solid #444',
-                                display: 'flex',
-                                alignItems: 'center',
-                                paddingLeft: '10px'
-                            }}
+                            style={{ paddingLeft: `${indent + 20}px` }}
                         >
                             <input 
                                 type="checkbox" 
                                 checked={!!selectedLayerPaths[layer.id]}
                                 onChange={() => handleLayerCheckboxChange(layer)}
-                                style={{ 
-                                    margin: '0 8px 0 0', 
-                                    width: '16px',
-                                    height: '16px',
-                                    accentColor: '#0078d7',
-                                    cursor: 'pointer'
-                                }}
+                                className="layer-checkbox"
                             />
                             <span 
                                 onClick={() => handleLayerCheckboxChange(layer)}
-                                style={{ 
-                                    marginLeft: '8px',
-                                    color: selectedLayerPaths[layer.id] ? '#fff' : '#ccc',
-                                    cursor: 'pointer'
-                                }}
+                                className={`layer-name ${selectedLayerPaths[layer.id] ? 'selected' : ''}`}
                             >
                                 {layer.name}
                             </span>
@@ -418,48 +380,16 @@ const FileArea = () => {
         };
 
         return (
-            <div className="layer-section" style={{ 
-                height: 'calc(100vh - 180px)',
-                overflowY: 'auto',
-                backgroundColor: '#222',
-            }}>
-                <div style={{ 
-                    padding: '10px', 
-                    backgroundColor: '#333',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center'
-                }}>
-                    <p style={{ margin: '0', color: '#fff' }}>
-                        当前文件: {documentInfo.fileName}
-                        <span style={{ margin: '0 16px' }}>|</span>
-                        {documentInfo.groupCount}个组，{documentInfo.pixelLayerCount}个像素图层
-                    </p>
+            <div className="layer-section">
+                <div className="layer-header">
+                    <p className="layer-title">待执行图层</p>
                 </div>
-                <div className="layer-list-container" style={{ backgroundColor: '#222' }}>
+                <div className="layer-list-container" ref={layerListRef}>
                     {app.activeDocument ? renderLayerTree(app.activeDocument.layers) : 
-                        <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                        <div className="no-document">
                             没有活动文档
                         </div>
                     }
-                </div>
-            </div>
-        );
-    };
-
-    const FileArea = () => {
-        return (
-            <div className="section">
-                <div className="section-header">
-                    <h2 className="section-header-title">待执行图层</h2>
-                </div>
-                <div className="section-content">
-                    <div className="scrollable-area">
-                        {/* 图层树内容 */}
-                    </div>
-                </div>
-                <div className="section-footer">
-                    {/* 底部按钮 */}
                 </div>
             </div>
         );

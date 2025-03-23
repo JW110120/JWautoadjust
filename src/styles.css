@@ -1,161 +1,86 @@
 @font-face {
   font-family: 'SourceHanSansCN-Normal';
-  src: url('./SourceHanSansCN-Normal.otf') format('opentype');
+  src: url('./assets/SourceHanSansCN-Normal.otf') format('opentype');
   font-weight: normal;
   font-style: normal;
 }
 
-/* 新增全局布局样式 */
 body {
   font-family: 'SourceHanSansCN-Normal', Arial, sans-serif;
   margin: 0;
-  overflow: hidden; /* 防止双滚动条 */
-}
-
-#root {
-  width: 100%;
-  position: relative;
-  box-sizing: border-box;
-}
-
-/* 主容器样式 */
-/* 基础布局 */
-.main-container {
-  display: flex;
-  height: 100vh;
+  overflow: hidden;
   background: #222;
   color: #fff;
 }
 
-/* 左右两侧共用的基础样式 */
+#root {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+}
+
 .section {
   flex: 1;
   display: flex;
   flex-direction: column;
   border: 1px solid #444;
-  height: 100%;
   overflow: hidden;
 }
 
 .section-header {
-  padding: 8px;
-  background: #222;
-  border-bottom: 1px solid #444;
-  flex-shrink: 0;
-}
-
-.scrollable-area {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  background: #2a2a2a;
-}
-
-.list-item {
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid #333;
-  cursor: pointer;
-}
-
-.step-number {
-  margin-right: 8px;
-}
-
-.step-content {
-  flex: 1;
-}
-
-/* 标题区域 */
-/* 移除重复的样式定义 */
-.section-header {
-  padding: 8px;
+  padding: 12px;
   background: #333;
   border-bottom: 1px solid #444;
-  flex-shrink: 0;
-}
-
-/* 移除重复的 operation-record 样式，合并为一个 */
-.operation-record {
-  border: none;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-
-/* 移除重复的 operation-list 定义，合并样式 */
-.operation-list {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-/* 修改按钮样式，减小最小宽度以适应单个图标 */
-.operation-list li button {
-    opacity: 0;
-    transition: opacity 0.2s;
-    min-width: 30px;  /* 减小最小宽度 */
-    padding: 4px;     /* 调整内边距 */
 }
 
 .section-header-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: bold;
+  font-size: 14px;
+  font-weight: normal;
+  color: #999;
 }
 
-/* 内容区域 */
-.section-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* 滚动区域 */
 .scrollable-area {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0;  /* 移除内边距 */
+  padding: 0;
 }
 
-/* 列表项样式 */
 .list-item {
   display: flex;
   align-items: center;
+  padding: 8px 12px;
   border-bottom: 1px solid #333;
   cursor: pointer;
+  transition: background-color 0.2s;
 }
 
 .list-item:hover {
-  background: #333;
+  background: #2a2a2a;
 }
 
 .list-item.selected {
   background: #444;
 }
 
-.operation-list {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0;
-  margin: 0;
-  list-style: none;
+.step-number {
+  margin-right: 8px;
+  color: #666;
+  font-size: 12px;
 }
 
-/* 移除可能冲突的样式 */
-.operation-record {
-  border: none;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
+.step-content {
   flex: 1;
+  font-size: 12px;
+}
+
+.list-item:hover .delete-button {
+  opacity: 1;
+}
+
+.delete-button:hover {
+  color: #ff4444;
 }
 
 .right-section {
@@ -166,8 +91,11 @@ body {
 }
 
 .operation-record {
-  border: 2px solid #444;
-  padding: 20px;
+  border: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 /* 添加下拉菜单样式 */
@@ -201,18 +129,17 @@ body {
   background-color: #444;
 }
 
-/* 移除这个规则，因为我们不再使用悬停显示
-.dropdown:hover .dropdown-content {
-  display: block;
-}
-*/
-
+/* 检查并删除可能导致灰色方块的样式 */
 .bottom-buttons {
   display: flex;
+  padding: 8px;
 }
 
 .right-bottom-buttons {
   display: flex;
+  padding: 8px;
+  gap: 8px;
+  margin-bottom: 0px; /* 确保没有多余的底部边距 */
 }
 
 .operation-list {
@@ -220,10 +147,11 @@ body {
   flex: 1;
   padding: 0;
   margin: 0;
+  border-right: 1px solid #444;
 }
 
 .operation-list li {
-    padding: 8px 12px;
+    padding: 0px 15px;
     cursor: pointer;
     border-bottom: 1px solid #333; 
     color: #ccc;
@@ -236,7 +164,7 @@ body {
 .operation-list li button {
     opacity: 0;
     transition: opacity 0.2s;
-    min-width: 50px;  /* 添加最小宽度 */
+    min-width: 30px;  /* 添加最小宽度 */
 }
 
 .operation-list li:hover button {
@@ -290,12 +218,52 @@ body {
     width: 100%;
 }
 
+.info-section {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    background: #333;
+    border-top: 1px solid #444;
+    height: 30px;
+    width: 100%;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    z-index: 1000;
+}
+
+/* 删除可能导致灰色方块的样式 */
+.bottom-buttons,
+.right-bottom-buttons {
+    margin-bottom: 0; /* 确保没有多余的底部边距 */
+}
+
+.doc-info {
+    font-size: 10px;
+    color: #999;
+    text-align: left;
+}
+
+.copyright-info {
+    font-size: 10px;
+    color: #999;
+    text-align: right;
+}
+
+.right-section > div:first-child {
+    display: none;
+}
+
+.bottom-buttons,
+.right-bottom-buttons {
+    margin-bottom: 30px;
+}
+
 .adjustment-list {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 8px; /* 为滚动条预留空间 */
-    margin-right: -8px; /* 补偿padding-right造成的宽度增加 */
 }
 
 /* 待执行图层列表样式 */
@@ -303,7 +271,6 @@ body {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    height: calc(100% - 40px); /* 减去顶部标题的高度 */
     padding-right: 8px;
     margin-right: -8px;
 }
@@ -317,13 +284,6 @@ body {
   padding-left: 20px;
 }
 
-/* 在文件末尾添加以下样式 */
-#root + div {
-  min-width: 150px; /* 设置最小宽度 */
-  padding: 10px 10px; /* 增加左右padding */
-  white-space: nowrap; /* 防止文字换行 */
-}
-
 .group {
   cursor: pointer;
   user-select: none;
@@ -331,4 +291,107 @@ body {
 
 .group ul {
   transition: all 0.3s ease;
+}
+
+.layer-section {
+    height: calc(100vh - 60px);
+    overflow-y: hidden; /* 确保标题栏不被滑动条影响 */
+    background-color: #222;
+    margin-top: 0px;
+}
+
+.layer-list-container {
+    overflow-y: auto; /* 将滑动条应用于图层列表，而不是整个section */
+    height: calc(100% - 40px); /* 减去标题栏的高度 */
+}
+
+/* 确保没有其他样式覆盖滑动条 */
+.scrollable-area {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0;
+}
+
+/* 确保滚动条样式正确应用 */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #222;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.layer-header {
+    padding: 10px;
+    background-color: #333;
+}
+
+.layer-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.group-container {
+    /* 样式定义 */
+}
+
+.group-header {
+    padding: 8px 0;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding-left: 10px;
+    width: 100%;
+}
+
+.toggle-icon {
+    width: 12px;
+    height: 12px;
+    margin-right: 8px;
+    transition: transform 0.2s;
+}
+
+.folder-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+}
+
+.layer-name {
+    color: #fff;
+}
+
+.group-children {
+    margin-left: 20px; /* 默认缩进 */
+}
+
+.layer-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #444;
+    display: flex;
+    align-items: center;
+    /* 移除内联样式，使用类样式 */
+}
+
+.layer-checkbox {
+    margin: 0 8px 0 0;
+    width: 16px;
+    height: 16px;
+    accent-color: #0078d7;
+    cursor: pointer;
+}
+
+.layer-name.selected {
+    color: #fff;
 }

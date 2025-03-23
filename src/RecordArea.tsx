@@ -6,6 +6,7 @@ import { DeleteButton } from './components/DeleteButton';
 import { eventToNameMap } from './constants';
 import { createSampleLayer } from './utils/layerUtils';
 import { useRecordContext } from './contexts/RecordContext';
+import { useScrollPosition } from './utils/scrollUtils';
 
 // 录制区域组件
 export const useRecord = () => {
@@ -447,46 +448,14 @@ export const RecordArea = () => {
         isRecording,
         adjustmentSteps,
         deleteAdjustmentAndLayer,
-        selectedIndex,     // 添加这行
-        setSelectedIndex   // 添加这行
+        selectedIndex,
+        setSelectedIndex
     } = useRecord();
 
-    const listRef = useRef(null);
-    const [scrollPosition, setScrollPosition] = useState(0);
-
-    // 保存滚动位置
-    const handleScroll = useCallback(() => {
-        if (listRef.current) {
-            setScrollPosition(listRef.current.scrollTop);
-        }
-    }, []);
-
-    // 恢复滚动位置
-    useEffect(() => {
-        if (listRef.current) {
-            listRef.current.scrollTop = scrollPosition;
-        }
-    }, [adjustmentSteps, scrollPosition]);
-
-    // 添加滚动事件监听
-    useEffect(() => {
-        const listElement = listRef.current;
-        if (listElement) {
-            listElement.addEventListener('scroll', handleScroll);
-            return () => {
-                listElement.removeEventListener('scroll', handleScroll);
-            };
-        }
-    }, [handleScroll]);
+    const { ref: listRef } = useScrollPosition(); // 使用工具函数
 
     return (
         <div className="section">
-            <div className="section-header">
-                <h2 className="section-header-title">
-                    当前文件: {app.activeDocument?.name || '无文档'} | 
-                    {app.activeDocument?.layers?.length || 0} 个图层
-                </h2>
-            </div>
             <div className="scrollable-area" ref={listRef}>
                 {adjustmentSteps.map((step, index) => (
                     <div
@@ -504,6 +473,15 @@ export const RecordArea = () => {
                         />
                     </div>
                 ))}
+            </div>
+            <div className="info-section" style={{ width: '100%' }}>  {/* 确保信息栏贯通整个底部 */}
+                <div className="doc-info">
+                    当前文件: {app.activeDocument?.name || '无文档'} | 
+                    {app.activeDocument?.layers?.length || 0} 个图层
+                </div>
+                <div className="copyright-info">
+                    © 2024 JWautoadjust
+                </div>
             </div>
         </div>
     );
