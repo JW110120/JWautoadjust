@@ -6,18 +6,12 @@ import FileArea from './FileArea';  // 修改导入方式
 
 const MainContainer: React.FC = () => {
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
-    const { isRecording, startRecording, stopRecording } = useRecord();
     const { LayerTreeComponent, handleCreateSnapshot, applyAdjustments } = FileArea();  // 修改使用方式
     const [selectedStepIndex, setSelectedStepIndex] = useState(-1);
 
-    // 添加调试日志
     useEffect(() => {
-        console.log('MainContainer中的adjustmentSteps:', adjustmentSteps);
     }, [adjustmentSteps]);
 
-    // 删除这一行
-    // const adjustInstance = Adjust();
-    // 处理记录按钮点击
     const handleRecordClick = async () => {
         try {
             const { showAlert } = require("photoshop").core;  // 移到函数顶部
@@ -32,15 +26,35 @@ const MainContainer: React.FC = () => {
         }
     };
 
-    // 处理删除步骤
-    const handleDeleteStep = (index) => {
-        deleteAdjustmentStep(index);
-        // 如果删除的是当前选中项，重置选中状态
-        if (index === selectedStepIndex) {
-            setSelectedStepIndex(-1);
-        } else if (index < selectedStepIndex) {
-            // 如果删除的项在选中项之前，选中项索引需要减1
-            setSelectedStepIndex(selectedStepIndex - 1);
+    const { 
+        isRecording, 
+        startRecording, 
+        stopRecording,
+        deleteAdjustmentAndLayer  // 确保从 useRecord 中获取这个函数
+    } = useRecord();
+
+    // 修改处理删除的函数
+    const handleDeleteStep = async (index) => {
+        if (!isRecording && index >= 0) {
+            try {
+                // 在删除之前计算新的索引
+                const newLength = adjustmentSteps.length - 1;
+                const newIndex = index === adjustmentSteps.length - 1 ? newLength - 1 : index;
+                
+                await deleteAdjustmentAndLayer(index);
+                
+                // 删除后，如果还有记录
+                if (newLength > 0) {
+                    setSelectedStepIndex(newIndex);
+                } else {
+                    // 如果没有记录了，重置选择
+                    setSelectedStepIndex(-1);
+                }
+            } catch (error) {
+                console.error('删除步骤失败:', error);
+                const { showAlert } = require("photoshop").core;
+                showAlert({ message: `删除步骤失败: ${error.message}` });
+            }
         }
     };
 
@@ -55,12 +69,13 @@ const MainContainer: React.FC = () => {
             color: '#fff',
             display: 'flex',
             width: '100%',
-            height: '100%'
+            height: '100vh'  // 修改这里，使用视口高度
         }}>
             <div className="left-section" style={{ 
                 width: '50%',
                 display: 'flex',
-                flexDirection: 'column'
+                flexDirection: 'column',
+                height: '100%'  // 添加这行确保左侧区域填充满高度
             }}>
                 <div style={{ 
                     padding: '10px', 
@@ -98,7 +113,7 @@ const MainContainer: React.FC = () => {
                     backgroundColor: '#333',
                     borderTop: '1px solid #444'
                 }}>
-                    <AdjustmentMenu />
+                    {/* 交换按钮位置 */}
                     <button 
                         onClick={handleRecordClick}
                         style={{ 
@@ -112,11 +127,11 @@ const MainContainer: React.FC = () => {
                     >
                         <span style={{ marginRight: '5px' }}>⏺</span> {isRecording ? '停止' : '记录'}
                     </button>
-                    {/* 修改这里，传递必要的属性 */}
+                    <AdjustmentMenu />
                     <DeleteButton 
                         isRecording={isRecording}
-                        hasSteps={adjustmentSteps.length > 0}
-                        onDelete={() => selectedStepIndex >= 0 ? handleDeleteStep(selectedStepIndex) : null}
+                        hasSteps={adjustmentSteps.length > 0 && selectedStepIndex >= 0}
+                        onDelete={() => handleDeleteStep(selectedStepIndex)}
                         index={selectedStepIndex}
                     />
                 </div>

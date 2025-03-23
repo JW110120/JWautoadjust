@@ -10,6 +10,7 @@ export const adjustmentMenuItems = [
     { id: 'photoFilter', name: '照片滤镜', command: 'photoFilter' },
     { id: 'channelMixer', name: '通道混合器', command: 'channelMixer' },
     { id: 'colorLookup', name: '颜色查找', command: 'colorLookup' },
+    { id: 'shadowHighlight', name: '阴影/高光', command: 'shadowHighlight' },
     { id: 'invert', name: '反相', command: 'invert' },
     { id: 'posterize', name: '色调分离', command: 'posterize' },
     { id: 'threshold', name: '阈值', command: 'threshold' },
@@ -30,6 +31,7 @@ export const eventToNameMap = {
     'photoFilter': '照片滤镜',
     'channelMixer': '通道混合器',
     'colorLookup': '颜色查找',
+    'shadowHighlight': '阴影/高光',  // 移除(&W)
     'invert': '反相',
     'posterize': '色调分离',
     'threshold': '阈值',

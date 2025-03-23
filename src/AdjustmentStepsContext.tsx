@@ -16,12 +16,10 @@ export const AdjustmentStepsProvider = ({ children }) => {
     
     // 添加调试日志
     useEffect(() => {
-        console.log('Provider中的adjustmentSteps更新:', adjustmentSteps);
     }, [adjustmentSteps]);
 
     // 修改：添加防重复逻辑的 addAdjustmentStep 函数
     const addAdjustmentStep = (step, displayName, addToStart = false) => {
-        console.log('尝试添加步骤:', step, '显示名称:', displayName, '添加到开头:', addToStart);
         
         // 提取步骤名称（不包含时间戳）
         const stepNameMatch = step.match(/(.*) \(\d+\)/);
@@ -47,12 +45,10 @@ export const AdjustmentStepsProvider = ({ children }) => {
             
             // 如果是重复的，返回原数组，不做更改
             if (isDuplicate) {
-                console.log('检测到重复步骤，忽略:', step);
                 return prevSteps;
             }
             
             // 如果不是重复的，添加新步骤
-            console.log('添加新步骤:', step);
             
             // 如果提供了显示名称，更新displayNames
             if (displayName) {
@@ -79,7 +75,6 @@ export const AdjustmentStepsProvider = ({ children }) => {
 
     // 清空所有步骤
     const clearAllSteps = () => {
-        console.log('清空所有步骤');
         setAdjustmentSteps([]);
         setDisplayNames({});
     };

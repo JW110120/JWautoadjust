@@ -20,7 +20,6 @@ export const useRecord = () => {
     }, [isRecording]);
     
     useEffect(() => {
-        console.log('RecordArea中的adjustmentSteps更新:', adjustmentSteps);
     }, [adjustmentSteps]);
 
     const syncAdjustmentLayers = async (layerId = null) => {
@@ -43,8 +42,6 @@ export const useRecord = () => {
                 _target: [{ _ref: "layer", _id: targetLayerId }],
                 _options: { dialogOptions: "dontDisplay" }
             }], { synchronousExecution: true });
-
-            console.log('滤镜信息:', result[0]?.smartObject?.filterFX);
             
             const filterFX = result[0]?.smartObject?.filterFX || [];
             
@@ -178,12 +175,6 @@ export const useRecord = () => {
                 );
             }, {"commandName": `应用${adjustmentItem.name}调整`});
 
-            const timestamp = new Date().getTime();
-            const step = `${adjustmentItem.name} (${timestamp})`;
-            
-            setTimeout(() => {
-                addAdjustmentStep(step, adjustmentItem.name);
-            }, 0);
         } catch (error) {
             console.error('应用调整失败:', error);
             const { showAlert } = require("photoshop").core;
@@ -200,59 +191,88 @@ export const useRecord = () => {
         try {
             if (sampleLayerId) {
                 await executeAsModal(async () => {
-                    const doc = app.activeDocument;
-                    const allLayers = doc.layers;
-                    const adjustmentLayers = [];
-                    
-                    for (let i = 0; i < allLayers.length; i++) {
-                        const layer = allLayers[i];
-                        if (layer.id === sampleLayerId) break;
-                        if (layer.kind === 'adjustmentLayer' || layer.adjustmentType) {
-                            adjustmentLayers.push(layer);
-                        }
-                    }
-                    
-                    adjustmentLayers.reverse();
-                    const layerToDelete = adjustmentLayers[index];
-                        
-                    if (layerToDelete) {
-                        await batchPlay(
-                            [{
-                                _obj: "select",
-                                _target: [{ _ref: "layer", _id: layerToDelete.id }],
-                                makeVisible: true,
-                                _options: { dialogOptions: "dontDisplay" }
-                            }],
-                            { synchronousExecution: true }
-                        );
+                    // 选中样本图层
+                    await batchPlay([{
+                        _obj: "select",
+                        _target: [{ _ref: "layer", _id: sampleLayerId }],
+                        makeVisible: true,
+                        _options: { dialogOptions: "dontDisplay" }
+                    }], { synchronousExecution: true });
 
-                        await batchPlay(
-                            [{
-                                _obj: "delete",
-                                _target: [{ 
+                    // 获取智能滤镜信息
+                    const result = await batchPlay([{
+                        _obj: "get",
+                        _target: [{ _ref: "layer", _id: sampleLayerId }],
+                        _options: { dialogOptions: "dontDisplay" }
+                    }], { synchronousExecution: true });
+
+                    const filterFX = result[0]?.smartObject?.filterFX || [];
+                    
+                    // 特殊处理只有一条记录的情况
+                    if (adjustmentSteps.length === 1) {
+                        // 直接清除所有智能滤镜
+                        await batchPlay([{
+                            _obj: "delete",
+                            _target: [
+                                {
+                                    _ref: "filterFX"
+                                },
+                                {
                                     _ref: "layer",
                                     _enum: "ordinal",
                                     _value: "targetEnum"
+                                }
+                            ],
+                            _options: {
+                                dialogOptions: "dontDisplay"
+                            }
+                        }], {});
+                    } else {
+                        let filterIndex;
+                        // 智能滤镜是从下往上排列的，索引0是最底部的滤镜，FilterIndex中的索引1是最上方的条目所以需要反转索引关系
+                        filterIndex = filterFX.length - index;
+                        
+                        // 确保索引在有效范围内
+                        if (filterIndex < 0) filterIndex = 0;
+                        if (filterIndex >= filterFX.length) filterIndex = filterFX.length ;
+                    }
+                    
+                    if (filterIndex >= 0 && filterIndex <= filterFX.length) {
+                        try {
+                    await batchPlay([{
+                                _obj: "delete",
+                                _target: [{
+                                    _ref: "filterFX",
+                                    _index: filterIndex
                                 }],
                                 _options: { dialogOptions: "dontDisplay" }
-                            }],
-                            { synchronousExecution: true }
-                        );
+                            }], { synchronousExecution: true });
+                        } catch (error) {
+                            await batchPlay([{
+                                _obj: "set",
+                                _target: [{
+                                    _ref: "filterFX",
+                                    _index: filterIndex
+                                }],
+                                enabled: false,
+                                _options: { dialogOptions: "dontDisplay" }
+                            }], { synchronousExecution: true });
+
+                            await batchPlay([{
+                                _obj: "delete",
+                                _target: [{
+                                    _ref: "filterFX",
+                                    _index: filterIndex
+                                }],
+                                _options: { dialogOptions: "dontDisplay" }
+                            }], { synchronousExecution: true });
+                        }
                     }
+                }, { "commandName": "删除智能滤镜" });
 
-                    await batchPlay(
-                        [{
-                            _obj: "select",
-                            _target: [{ _ref: "layer", _id: sampleLayerId }],
-                            makeVisible: true,
-                            _options: { dialogOptions: "dontDisplay" }
-                        }],
-                        { synchronousExecution: true }
-                    );
-                }, {"commandName": "删除调整图层"});
+                // 删除步骤记录
+                deleteAdjustmentStep(index);
             }
-
-            deleteAdjustmentStep(index);
         } catch (error) {
             console.error('删除调整失败:', error);
             showAlert({ message: `删除调整失败: ${error.message}` });
@@ -336,6 +356,38 @@ export const useRecord = () => {
         }
     };
 
+    // 添加新的同步函数
+    const syncWithSampleLayer = async () => {
+        try {
+            const doc = app.activeDocument;
+            if (!doc) return;
+
+            const sampleLayer = doc.layers.find(layer => 
+                layer.name === "样本图层" && 
+                layer.kind === "smartObject"
+            );
+
+            if (sampleLayer) {
+                await syncAdjustmentLayers(sampleLayer.id);
+            } else {
+                // 如果没有找到样本图层，清空记录
+                clearAllSteps();
+                setSampleLayerId(null);
+            }
+        } catch (error) {
+            console.error('同步样本图层失败:', error);
+        }
+    };
+
+    // 添加同步监听器
+    useEffect(() => {
+        // 只在非录制状态且存在样本图层时启动同步
+        if (!isRecording && sampleLayerId) {
+            const syncInterval = setInterval(syncWithSampleLayer, 500);
+            return () => clearInterval(syncInterval);
+        }
+    }, [isRecording, sampleLayerId]);
+
     // 样本图层监听器
     useEffect(() => {
         if (isRecording && sampleLayerId) {
@@ -378,7 +430,7 @@ export const useRecord = () => {
         isRecording,
         adjustmentSteps,
         applyAdjustment,
-        deleteAdjustmentAndLayer,
+        deleteAdjustmentAndLayer,  // 确保这个函数被导出
         sampleLayerId,
         setSampleLayerId,
         applyDirectAdjustment
@@ -402,7 +454,6 @@ export const AdjustmentMenu = () => {
     );
 };
 
-// 修改 RecordArea 组件
 export const RecordArea = () => {
     const {
         isRecording,
@@ -410,19 +461,52 @@ export const RecordArea = () => {
         deleteAdjustmentAndLayer,
     } = useRecord();
 
+    const [selectedIndex, setSelectedIndex] = useState(-1);
+    const listRef = useRef(null);
+    const [scrollPosition, setScrollPosition] = useState(0);
+
+    // 保存滚动位置
+    const handleScroll = useCallback(() => {
+        if (listRef.current) {
+            setScrollPosition(listRef.current.scrollTop);
+        }
+    }, []);
+
+    // 恢复滚动位置
+    useEffect(() => {
+        if (listRef.current) {
+            listRef.current.scrollTop = scrollPosition;
+        }
+    }, [adjustmentSteps, scrollPosition]);
+
+    // 添加滚动事件监听
+    useEffect(() => {
+        const listElement = listRef.current;
+        if (listElement) {
+            listElement.addEventListener('scroll', handleScroll);
+            return () => {
+                listElement.removeEventListener('scroll', handleScroll);
+            };
+        }
+    }, [handleScroll]);
+
     return (
-        <div className="record-panel">
-            <div className="controls">
-                <AdjustmentMenu />
+        <div className="section">
+            <div className="section-header">
+                <h2 className="section-header-title">
+                    当前文件: {app.activeDocument?.name || '无文档'} | 
+                    {app.activeDocument?.layers?.length || 0} 个图层
+                </h2>
             </div>
-            
-            <div className="adjustment-list">
+            <div className="scrollable-area" ref={listRef}>
                 {adjustmentSteps.map((step, index) => (
-                    <div key={index} className="adjustment-item">
-                        <span className="step-number">
-                            {adjustmentSteps.length - index}.
-                        </span>
-                        <span className="step-name">{step}</span>
+                    <div
+                        key={index}
+                        className={`list-item ${selectedIndex === index ? 'selected' : ''}`}
+                        onClick={() => setSelectedIndex(index)}
+                    >
+                        <span className="step-number">{index + 1}.</span>
+                        <span className="step-content">{step}</span>
                         <DeleteButton
                             isRecording={isRecording}
                             hasSteps={adjustmentSteps.length > 0}

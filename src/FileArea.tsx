@@ -2,7 +2,7 @@ import React, { useState, useContext, useEffect, useCallback } from 'react';
 import { app, Document, Layer, SmartObject, Snapshot } from 'photoshop';
 import { AdjustmentStepsContext } from './AdjustmentStepsContext';
 
-const Adjust = () => {
+const FileArea = () => {
     const { adjustmentSteps } = useContext(AdjustmentStepsContext);
     const [pixelLayers, setPixelLayers] = useState([]);
     const [selectedLayers, setSelectedLayers] = useState([]);
@@ -183,16 +183,17 @@ const Adjust = () => {
         // 渲染图层树
         const renderLayerTree = (layers: Layer[], parentPath = '', indent = 0) => {
             return layers.map((layer, index) => {
+                // 修改 key 的生成方式，使用图层 ID 确保唯一性
                 const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
+                const uniqueKey = `${currentPath}_${layer.id}`;  // 使用图层ID确保唯一性
                 
                 if (layer.kind === 'group') {
                     return (
-                        <div key={currentPath} className="group-container">
+                        <div key={uniqueKey} className="group-container">
                             <div 
                                 className="group-header"
                                 style={{ 
                                     padding: '8px 0',
-                                    backgroundColor: '#333',
                                     display: 'flex',
                                     alignItems: 'center'
                                 }}
@@ -240,7 +241,7 @@ const Adjust = () => {
                 } else if (layer.kind === 'pixel') {
                     return (
                         <div 
-                            key={currentPath} 
+                            key={uniqueKey}
                             className="layer-item"
                             style={{ 
                                 padding: '8px 0',
@@ -304,6 +305,24 @@ const Adjust = () => {
         );
     };
 
+    const FileArea = () => {
+        return (
+            <div className="section">
+                <div className="section-header">
+                    <h2 className="section-header-title">待执行图层</h2>
+                </div>
+                <div className="section-content">
+                    <div className="scrollable-area">
+                        {/* 图层树内容 */}
+                    </div>
+                </div>
+                <div className="section-footer">
+                    {/* 底部按钮 */}
+                </div>
+            </div>
+        );
+    };
+
     return {
         LayerTreeComponent,
         handleCreateSnapshot,
@@ -313,4 +332,4 @@ const Adjust = () => {
     };
 };
 
-export default Adjust;
+export default FileArea;
