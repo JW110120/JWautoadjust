@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useState } from 'react';
+import { app } from 'photoshop';  // 添加这行导入
 import { AdjustmentStepsContext } from './AdjustmentStepsContext';
 import { useRecord, RecordArea, AdjustmentMenu, DeleteButtonWrapper as DeleteButton } from './RecordArea';
 import FileArea from './FileArea';  // 修改导入方式
@@ -71,6 +72,189 @@ const MainContainerContent: React.FC = () => {
         setSelectedStepIndex(index);
     };
 
+    const handleStepDoubleClick = async (index) => {
+        if (!isRecording && index >= 0) {
+            try {
+                const { executeAsModal, showAlert } = require("photoshop").core;
+                const { batchPlay } = require("photoshop").action;
+                
+                // 获取样本图层
+                const doc = app.activeDocument;
+                const sampleLayer = doc.layers.find(layer => 
+                    layer.name === "样本图层" && 
+                    layer.kind === "smartObject"
+                );
+    
+                if (sampleLayer) {
+                    await executeAsModal(async () => {
+                        // 选中样本图层
+                        await batchPlay([{
+                            _obj: "select",
+                            _target: [{ _ref: "layer", _id: sampleLayer.id }],
+                            makeVisible: true,
+                            _options: { dialogOptions: "dontDisplay" }
+                        }], { synchronousExecution: true });
+    
+                        // 获取智能滤镜信息
+                        const result = await batchPlay([{
+                            _obj: "get",
+                            _target: [{ _ref: "layer", _id: sampleLayer.id }],
+                            _options: { dialogOptions: "dontDisplay" }
+                        }], { synchronousExecution: true });
+    
+                        const filterFX = result[0]?.smartObject?.filterFX || [];
+                        const filterIndex = filterFX.length - index - 1;
+    
+                        // 打开滤镜对话框进行编辑
+                        if (filterIndex >= 0 && filterIndex < filterFX.length) {
+                            await batchPlay([{
+                                _obj: "set",
+                                _target: [
+                                    {
+                                        _ref: "filterFX",
+                                        _index: filterIndex
+                                    },
+                                    {
+                                        _ref: "layer",
+                                        _enum: "ordinal",
+                                        _value: "targetEnum"
+                                    }
+                                ],
+                                filterFX: {
+                                    _obj: "filterFX",
+                                    filter: {
+                                        _obj: filterFX[filterIndex].filter._obj,
+                                        presetKind: {
+                                            _enum: "presetKindType",
+                                            _value: "presetKindCustom"
+                                        }
+                                    }
+                                },
+                                _options: {
+                                    dialogOptions: "display"
+                                }
+                            }], { synchronousExecution: true });
+                        }
+                    }, { "commandName": "编辑智能滤镜" });
+                }
+            } catch (error) {
+                console.error('编辑滤镜失败:', error);
+                const { showAlert } = require("photoshop").core;
+                showAlert({ message: `编辑滤镜失败: ${error.message}` });
+            }
+        }
+    };
+
+    const handleEditBlendOptions = async (index) => {
+        if (!isRecording && index >= 0) {
+            try {
+                const { executeAsModal, showAlert } = require("photoshop").core;
+                const { batchPlay } = require("photoshop").action;
+                
+                const doc = app.activeDocument;
+                const sampleLayer = doc.layers.find(layer => 
+                    layer.name === "样本图层" && 
+                    layer.kind === "smartObject"
+                );
+    
+                if (sampleLayer) {
+                    await executeAsModal(async () => {
+                        // 选中样本图层
+                        await batchPlay([{
+                            _obj: "select",
+                            _target: [{ _ref: "layer", _id: sampleLayer.id }],
+                            makeVisible: true,
+                            _options: { dialogOptions: "dontDisplay" }
+                        }], { synchronousExecution: true });
+    
+                        // 获取智能滤镜信息
+                        const result = await batchPlay([{
+                            _obj: "get",
+                            _target: [{ _ref: "layer", _id: sampleLayer.id }],
+                            _options: { dialogOptions: "dontDisplay" }
+                        }], { synchronousExecution: true });
+    
+                        const filterFX = result[0]?.smartObject?.filterFX || [];
+                        
+                        // 使用与删除按钮相同的索引计算逻辑
+                        let filterIndex = filterFX.length - index;
+                        
+                        // 确保索引在有效范围内
+                        if (filterIndex < 0) filterIndex = 0;
+                        if (filterIndex >= filterFX.length) filterIndex = filterFX.length;
+    
+                        if (filterIndex >= 0 && filterIndex <= filterFX.length) {
+                            await batchPlay([{
+                                _obj: "set",
+                                _target: [
+                                    {
+                                        _ref: "filterFX",
+                                        _index: filterIndex
+                                    },
+                                    {
+                                        _ref: "layer",
+                                        _enum: "ordinal",
+                                        _value: "targetEnum"
+                                    }
+                                ],
+                                filterFX: {
+                                    _obj: "filterFX",
+                                    blendOptions: {
+                                        _obj: "blendOptions"
+                                    }
+                                },
+                                _options: {
+                                    dialogOptions: "display"
+                                }
+                            }], { synchronousExecution: true });
+                        }
+                    }, { "commandName": "编辑混合选项" });
+                }
+            } catch (error) {
+                console.error('编辑混合选项失败:', error);
+                const { showAlert } = require("photoshop").core;
+                showAlert({ message: `编辑混合选项失败: ${error.message}` });
+            }
+        }
+    };
+
+    // 修改记录列表的渲染部分
+    {adjustmentSteps.map((step, index) => (
+        <li 
+            key={index}
+            onClick={() => handleStepClick(index)}
+            onDoubleClick={() => handleStepDoubleClick(index)}
+            className={index === selectedStepIndex ? 'selected' : ''}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        >
+            <div>
+                <span className="step-number">
+                    {adjustmentSteps.length - index}.
+                </span>
+                <span className="step-name">{displayNames[step] || step}</span>
+            </div>
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditBlendOptions(index);
+                }}
+                style={{
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    color: '#999',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center'
+                }}
+                title="编辑混合选项"
+            >
+                <span style={{ marginRight: '4px' }}>⚙️</span>
+                混合
+            </button>
+        </li>
+    ))}
     return (
         <div className="main-container" style={{ 
             backgroundColor: '#222', 
@@ -103,12 +287,35 @@ const MainContainerContent: React.FC = () => {
                             <li 
                                 key={index}
                                 onClick={() => handleStepClick(index)}
+                                onDoubleClick={() => handleStepDoubleClick(index)}
                                 className={index === selectedStepIndex ? 'selected' : ''}
+                                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                             >
-                                <span className="step-number">
-                                    {adjustmentSteps.length - index}.
-                                </span>
-                                <span className="step-name">{displayNames[step] || step}</span>
+                                <div>
+                                    <span className="step-number">
+                                        {adjustmentSteps.length - index}.
+                                    </span>
+                                    <span className="step-name">{displayNames[step] || step}</span>
+                                </div>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleEditBlendOptions(index);
+                                    }}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#999',
+                                        cursor: 'pointer',
+                                        padding: '4px 8px',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                    }}
+                                    title="编辑混合选项"
+                                >
+                                    <span style={{ marginRight: '4px' }}>⚙️</span>
+                                </button>
                             </li>
                         ))}
                     </ul>

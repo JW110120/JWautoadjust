@@ -194,15 +194,43 @@ body {
 }
 
 .operation-list li {
-  padding: 8px 12px;
-  cursor: pointer;
-  border-bottom: 1px solid #333; 
-  color: #ccc;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #333; 
+    color: #ccc;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.operation-list li button {
+    opacity: 0;
+    transition: opacity 0.2s;
+    min-width: 50px;  /* 添加最小宽度 */
+}
+
+.operation-list li:hover button {
+    opacity: 1;
+}
+
+.operation-list li button:hover {
+    color: #fff;
+    background-color: #444;
+    border-radius: 4px;
+}
+
+.operation-list li.selected button {
+    color: #fff;  /* 选中状态下按钮文字颜色 */
+}
+
+.operation-list li:hover {
+    background-color: #2a2a2a;
 }
 
 .operation-list li.selected {
-  background-color: #0078d7;
-  color: #fff;
+    background-color: #0078d7;
+    color: #fff;
 }
 
 .operation-list .step-number {
