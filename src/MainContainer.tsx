@@ -1,20 +1,35 @@
-// 在 MainContainer.tsx 中修改
 import React, { useContext, useEffect, useState } from 'react';
 import { AdjustmentStepsContext } from './AdjustmentStepsContext';
 import { useRecord, RecordArea, AdjustmentMenu, DeleteButtonWrapper as DeleteButton } from './RecordArea';
 import FileArea from './FileArea';  // 修改导入方式
+import { RecordProvider } from './contexts/RecordContext';
 
 const MainContainer: React.FC = () => {
+    return (
+        <RecordProvider>
+            <MainContainerContent />
+        </RecordProvider>
+    );
+};
+
+// 将主要内容移到单独的组件中
+const MainContainerContent: React.FC = () => {
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
     const { LayerTreeComponent, handleCreateSnapshot, applyAdjustments } = FileArea();  // 修改使用方式
     const [selectedStepIndex, setSelectedStepIndex] = useState(-1);
 
-    useEffect(() => {
-    }, [adjustmentSteps]);
+    const { 
+        isRecording, 
+        startRecording, 
+        stopRecording,
+        deleteAdjustmentAndLayer,
+        applyAdjustment,
+        applyDirectAdjustment
+    } = useRecord();
 
     const handleRecordClick = async () => {
         try {
-            const { showAlert } = require("photoshop").core;  // 移到函数顶部
+            const { showAlert } = require("photoshop").core;
             if (isRecording) {
                 await stopRecording();
             } else {
@@ -25,13 +40,6 @@ const MainContainer: React.FC = () => {
             showAlert({ message: `录制失败: ${error.message}` });
         }
     };
-
-    const { 
-        isRecording, 
-        startRecording, 
-        stopRecording,
-        deleteAdjustmentAndLayer  // 确保从 useRecord 中获取这个函数
-    } = useRecord();
 
     // 修改处理删除的函数
     const handleDeleteStep = async (index) => {
@@ -113,7 +121,6 @@ const MainContainer: React.FC = () => {
                     backgroundColor: '#333',
                     borderTop: '1px solid #444'
                 }}>
-                    {/* 交换按钮位置 */}
                     <button 
                         onClick={handleRecordClick}
                         style={{ 
@@ -127,7 +134,10 @@ const MainContainer: React.FC = () => {
                     >
                         <span style={{ marginRight: '5px' }}>⏺</span> {isRecording ? '停止' : '记录'}
                     </button>
-                    <AdjustmentMenu />
+                    <AdjustmentMenu 
+                        onAdjustmentClick={applyAdjustment}
+                        onDirectAdjustment={applyDirectAdjustment}
+                    />
                     <DeleteButton 
                         isRecording={isRecording}
                         hasSteps={adjustmentSteps.length > 0 && selectedStepIndex >= 0}
