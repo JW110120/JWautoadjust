@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import MainContainer from './MainContainer';
 import { AdjustmentStepsProvider } from './contexts/AdjustmentStepsContext';
+import { RecordProvider } from './contexts/RecordContext';
 
 const container = document.getElementById('root');
 if (container) {
@@ -11,7 +12,9 @@ if (container) {
   const App = () => {
     return (
       <AdjustmentStepsProvider>
-        <MainContainer />
+        <RecordProvider>
+          <MainContainer />
+        </RecordProvider>
       </AdjustmentStepsProvider>
     );
   };

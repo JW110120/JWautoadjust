@@ -1,8 +1,14 @@
 import React, { createContext, useContext, useState, useRef } from 'react';
 
-const RecordContext = createContext(null);
+interface RecordContextType {
+    isRecording: boolean;
+    setIsRecording: (value: boolean) => void;
+    isRecordingRef: React.RefObject<boolean>;
+}
 
-export const RecordProvider = ({ children }) => {
+const RecordContext = createContext<RecordContextType | null>(null);
+
+export const RecordProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [isRecording, setIsRecording] = useState(false);
     const isRecordingRef = useRef(false);
 
