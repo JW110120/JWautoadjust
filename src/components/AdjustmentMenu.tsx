@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { adjustmentMenuItems } from '../constants';
-import { findSampleLayer, createSampleLayer } from '../utils/layerUtils';
+import { adjustmentMenuItems } from '../Constants';
+import { findSampleLayer, createSampleLayer } from '../utils/BuildSmartObjUtils';
 import { app } from 'photoshop';
 
 interface AdjustmentMenuProps {

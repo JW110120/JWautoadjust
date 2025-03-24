@@ -3,7 +3,7 @@ import { Layer } from 'photoshop';
 import { app } from 'photoshop';
 import { useLayerTree } from '../contexts/LayerTreeContext';
 import { FaChevronDown, FaFolder } from 'react-icons/fa';
-import { useScrollPosition } from '../utils/scrollUtils';
+import { useScrollPosition } from '../utils/ScrollUtils';
 
 const LayerTreeComponent: React.FC = () => {
     const { ref: layerListRef } = useScrollPosition();

@@ -3,10 +3,10 @@ import { app } from 'photoshop';
 import { useAdjustmentSteps } from './contexts/AdjustmentStepsContext';
 import { AdjustmentMenu as AdjustmentMenuComponent } from './components/AdjustmentMenu';
 import { DeleteButton } from './components/DeleteButton';
-import { eventToNameMap } from './constants';
-import { createSampleLayer } from './utils/layerUtils';
+import { eventToNameMap } from './Constants';
+import { createSampleLayer } from './utils/BuildSmartObjUtils';
 import { useRecordContext } from './contexts/RecordContext';
-import { useScrollPosition } from './utils/scrollUtils';
+import { useScrollPosition } from './utils/ScrollUtils';
 
 // 录制区域组件
 export const useRecord = () => {

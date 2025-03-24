@@ -2,9 +2,10 @@ import React, { useContext, useEffect, useState, useRef } from 'react';
 import { app } from 'photoshop';
 import { AdjustmentStepsContext } from './contexts/AdjustmentStepsContext';
 import { useRecord, RecordArea, AdjustmentMenu, DeleteButtonWrapper as DeleteButton } from './RecordArea';
-import FileArea from './FileArea';
+import FileArea from './components/FileArea';
 import { RecordProvider } from './contexts/RecordContext';
 import InfoPlane from './components/InfoPlane';
+import LayerTreeComponent from './components/LayerTreeComponent';
 
 const MainContainer: React.FC = () => {
     return (
@@ -16,7 +17,8 @@ const MainContainer: React.FC = () => {
 
 const MainContainerContent: React.FC = () => {
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
-    const { LayerTreeComponent, handleCreateSnapshot, applyAdjustments } = FileArea();
+    const { handleCreateSnapshot, applyAdjustments } = useContext(AdjustmentStepsContext);
+    const FileAreaComponent = <FileArea />;
     const [selectedStepIndex, setSelectedStepIndex] = useState(-1);
 
     // 确保在组件函数体内使用 useRef
@@ -323,7 +325,7 @@ const MainContainerContent: React.FC = () => {
                     <p style={{ margin: '0', fontSize: '16px', fontWeight: 'bold' }}>待执行图层</p>
                 </div>
                 
-                {LayerTreeComponent && <LayerTreeComponent />}
+                <LayerTreeComponent />
                 
                 <div className="right-bottom-buttons" style={{ 
                     display: 'flex',
