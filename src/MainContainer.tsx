@@ -16,9 +16,9 @@ const MainContainer: React.FC = () => {
 };
 
 const MainContainerContent: React.FC = () => {
+    // 移除未使用的 FileAreaComponent 变量
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
     const { handleCreateSnapshot, applyAdjustments } = useContext(AdjustmentStepsContext);
-    const FileAreaComponent = <FileArea />;
     const [selectedStepIndex, setSelectedStepIndex] = useState(-1);
 
     // 确保在组件函数体内使用 useRef
@@ -100,7 +100,13 @@ const MainContainerContent: React.FC = () => {
                         }], { synchronousExecution: true });
     
                         const filterFX = result[0]?.smartObject?.filterFX || [];
-                        const filterIndex = filterFX.length - index - 1;
+                        
+                        // 智能滤镜是从下往上排列的，索引0是最底部的滤镜，FilterIndex中的索引1是最上方的条目所以需要反转索引关系
+                        let filterIndex = filterFX.length - index;
+                        
+                        // 确保索引在有效范围内
+                        if (filterIndex < 0) filterIndex = 0;
+                        if (filterIndex >= filterFX.length) filterIndex = filterFX.length - 1;
     
                         if (filterIndex >= 0 && filterIndex < filterFX.length) {
                             await batchPlay([{
@@ -191,8 +197,12 @@ const MainContainerContent: React.FC = () => {
                                 ],
                                 filterFX: {
                                     _obj: "filterFX",
-                                    blendOptions: {
-                                        _obj: "blendOptions"
+                                    filter: {
+                                        _obj: filterFX[filterIndex].filter._obj,
+                                        presetKind: {
+                                            _enum: "presetKindType",
+                                            _value: "presetKindCustom"
+                                        }
                                     }
                                 },
                                 _options: {
@@ -317,16 +327,10 @@ const MainContainerContent: React.FC = () => {
                 flexDirection: 'column',
                 minHeight: '100%'
             }}>
-                <div style={{ 
-                    padding: '10px', 
-                    backgroundColor: '#333',
-                    borderBottom: '1px solid #444'
-                }}>
-                    <p style={{ margin: '0', fontSize: '16px', fontWeight: 'bold' }}>待执行图层</p>
-                </div>
+                {/* 直接使用 FileArea 组件 */}
+                <FileArea />
                 
-                <LayerTreeComponent />
-                
+                {/* 底部按钮 */}
                 <div className="right-bottom-buttons" style={{ 
                     display: 'flex',
                     justifyContent: 'space-between',

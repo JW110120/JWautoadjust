@@ -4,18 +4,18 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 export const AdjustmentStepsContext = createContext({
     adjustmentSteps: [],
     displayNames: {},
-    selectedIndex: -1, // 添加这一行
+    selectedIndex: null, // 修改为 null
     addAdjustmentStep: (step: string, displayName?: string, addToStart?: boolean) => {},
     deleteAdjustmentStep: (index: number) => {},
     clearAllSteps: () => {},
-    setSelectedIndex: (index: number) => {} // 添加这一行
+    setSelectedIndex: (index: number) => {}
 });
 
 // 创建提供者组件
 export const AdjustmentStepsProvider = ({ children }) => {
     const [adjustmentSteps, setAdjustmentSteps] = useState([]);
     const [displayNames, setDisplayNames] = useState({});
-    const [selectedIndex, setSelectedIndex] = useState(-1); // 添加这一行
+    const [selectedIndex, setSelectedIndex] = useState<number | null>(null); // 修改为 null 并添加类型注解
 
     // 添加调试日志
     useEffect(() => {
@@ -50,19 +50,8 @@ export const AdjustmentStepsProvider = ({ children }) => {
                 }));
             }
             
-            const newSteps = [...prevSteps];
-            
-            if (addToStart) {
-                // 录制模式：添加到数组开头
-                return [step, ...newSteps];
-            } else if (selectedIndex >= 0) {
-                // 非录制模式且有选中位置：插入到选中位置后面
-                newSteps.splice(selectedIndex + 1, 0, step);
-                return newSteps;
-            } else {
-                // 非录制模式且无选中位置：添加到数组末尾（最上方）
-                return [...newSteps, step];
-            }
+            // 简化插入逻辑，直接根据 addToStart 决定插入位置
+            return addToStart ? [step, ...prevSteps] : [...prevSteps, step];
         });
     };
 
@@ -87,11 +76,11 @@ export const AdjustmentStepsProvider = ({ children }) => {
             value={{ 
                 adjustmentSteps, 
                 displayNames,
-                selectedIndex, // 添加这一行
+                selectedIndex, 
                 addAdjustmentStep, 
                 deleteAdjustmentStep,
                 clearAllSteps,
-                setSelectedIndex // 添加这一行
+                setSelectedIndex 
             }}
         >
             {children}

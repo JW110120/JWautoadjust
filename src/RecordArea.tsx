@@ -96,7 +96,7 @@ export const useRecord = () => {
             
             // 添加监听器
             const adjustmentListener = await addNotificationListener(
-                ['all'],
+                adjustmentMenuItems.map(item => item.command),
                 function(event, descriptor) {
                     if (!isRecordingRef.current) return;
                     
@@ -452,7 +452,19 @@ export const RecordArea = () => {
         setSelectedIndex
     } = useRecord();
 
-    const { ref: listRef } = useScrollPosition(); // 使用工具函数
+    const { ref: listRef } = useScrollPosition();
+
+    // 处理单击事件
+    const handleClick = (index) => {
+        console.log('单击索引:', index);
+        setSelectedIndex(index);
+    };
+
+    // 处理双击事件
+    const handleDoubleClick = (index) => {
+        console.log('双击索引:', index);
+        // 这里可以添加双击后的处理逻辑
+    };
 
     return (
         <div className="section">
@@ -461,7 +473,8 @@ export const RecordArea = () => {
                     <div
                         key={index}
                         className={`list-item ${selectedIndex === index ? 'selected' : ''}`}
-                        onClick={() => setSelectedIndex(index)}
+                        onClick={() => handleClick(index)}
+                        onDoubleClick={() => handleDoubleClick(index)}
                     >
                         <span className="step-number">{index + 1}.</span>
                         <span className="step-content">{step}</span>

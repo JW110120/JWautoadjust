@@ -18,18 +18,19 @@ const LayerTreeComponent: React.FC = () => {
     const renderLayerTree = useMemo(() => {
         const renderLayers = (layers: Layer[], parentPath = '', indent = 0) => {
             return layers.map((layer, index) => {
-                const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
-                const uniqueKey = `${currentPath}_${layer.id}`;
+                // 使用 layer.id 作为唯一标识，而不是路径
+                const uniqueKey = `${layer.id}`;
+                const currentPath = parentPath ? `${parentPath}/${layer.id}` : `${layer.id}`;
                 
                 if (layer.kind === 'group') {
                     return (
                         <div key={uniqueKey} className="group-container">
                             <div 
                                 className="group-header"
-                                onClick={() => toggleGroup(currentPath)}
+                                onClick={() => toggleGroup(layer.id)} // 直接使用 layer.id
                             >
                                 <FaChevronDown 
-                                    className={`toggle-icon ${collapsedGroups[currentPath] ? 'collapsed' : 'expanded'}`}
+                                    className={`toggle-icon ${collapsedGroups[layer.id] ? 'collapsed' : 'expanded'}`}
                                     aria-label="toggle"
                                     style={{ color: 'white' }}
                                 />
@@ -40,7 +41,7 @@ const LayerTreeComponent: React.FC = () => {
                                 />
                                 <span className="layer-name">{layer.name}</span>
                             </div>
-                            {!collapsedGroups[currentPath] && (
+                            {!collapsedGroups[layer.id] && ( // 直接使用 layer.id
                                 <div className="group-children" style={{ marginLeft: `${indent + 20}px` }}>
                                     {renderLayers(layer.layers, currentPath, indent + 20)}
                                 </div>
@@ -56,16 +57,17 @@ const LayerTreeComponent: React.FC = () => {
                         >
                             <input 
                                 type="checkbox" 
+                                id={`checkbox-${layer.id}`} // 添加 id 属性
                                 checked={!!selectedLayerPaths[layer.id]}
                                 onChange={() => handleLayerCheckboxChange(layer)}
                                 className="layer-checkbox"
                             />
-                            <span 
-                                onClick={() => handleLayerCheckboxChange(layer)}
+                            <label 
+                                htmlFor={`checkbox-${layer.id}`} // 使用 htmlFor 关联 checkbox
                                 className={`layer-name ${selectedLayerPaths[layer.id] ? 'selected' : ''}`}
                             >
                                 {layer.name}
-                            </span>
+                            </label>
                         </div>
                     );
                 }
