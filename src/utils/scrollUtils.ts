@@ -1,20 +1,23 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 
-export const useScrollPosition = () => {
+export const useScrollPosition = (preserveOnUpdate = false) => {
     const ref = useRef<HTMLDivElement | null>(null);
     const [scrollPosition, setScrollPosition] = useState(0);
+    const lastScrollPosition = useRef(0);
 
     const handleScroll = useCallback(() => {
         if (ref.current) {
-            setScrollPosition(ref.current.scrollTop);
+            const position = ref.current.scrollTop;
+            setScrollPosition(position);
+            lastScrollPosition.current = position;
         }
     }, []);
 
     useEffect(() => {
-        if (ref.current) {
-            ref.current.scrollTop = scrollPosition;
+        if (ref.current && preserveOnUpdate) {
+            ref.current.scrollTop = lastScrollPosition.current;
         }
-    }, [scrollPosition]);
+    }); // 在每次更新后恢复滚动位置
 
     useEffect(() => {
         const element = ref.current;

@@ -456,7 +456,7 @@ export const RecordArea = () => {
         setSelectedIndex
     } = useRecord();
 
-    const { ref: listRef } = useScrollPosition(); // 使用工具函数
+    const { ref: listRef } = useScrollPosition(true); // 添加 true 参数来保持滚动位置
 
     return (
         <div className="section">
