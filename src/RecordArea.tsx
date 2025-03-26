@@ -7,6 +7,7 @@ import { eventToNameMap } from './constants';
 import { createSampleLayer } from './utils/layerUtils';
 import { useRecordContext } from './contexts/RecordContext';
 import { useScrollPosition } from './utils/scrollUtils';
+import { adjustmentMenuItems } from './constants'; // 确保导入adjustmentMenuItems
 
 // 录制区域组件
 export const useRecord = () => {
@@ -94,9 +95,12 @@ export const useRecord = () => {
             setIsRecording(true);
             isRecordingRef.current = true;
             
+            // 提取命令列表
+            const commands = adjustmentMenuItems.map(item => item.command);
+
             // 添加监听器
             const adjustmentListener = await addNotificationListener(
-                ['all'],
+                commands, // 使用提取的命令列表
                 function(event, descriptor) {
                     if (!isRecordingRef.current) return;
                     
