@@ -1,8 +1,92 @@
-import React, { useState, useContext, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useContext, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useScrollPosition } from './utils/scrollUtils';
 import { app, Document, Layer, SmartObject, Snapshot } from 'photoshop';
 import { AdjustmentStepsContext } from './contexts/AdjustmentStepsContext';
 import { FaChevronDown, FaFolder } from 'react-icons/fa'; // 使用 react-icons 库
+import { debounce } from 'lodash';
+
+   // 渲染文件树组件
+   const LayerTreeComponent = React.memo(({ 
+    layers, 
+    collapsedGroups, 
+    selectedLayerPaths, 
+    toggleGroup, 
+    handleLayerCheckboxChange,
+    layerListRef 
+}) => {
+    // 渲染图层树
+    const renderLayerTree = (layers: Layer[], parentPath = '', indent = 0) => {
+        return layers.map((layer, index) => {
+            const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
+            const uniqueKey = `${currentPath}_${layer.id}`;
+            
+            if (layer.kind === 'group') {
+                return (
+                    <div key={uniqueKey} className="group-container">
+                        <div 
+                            className="group-header"
+                            onClick={() => toggleGroup(currentPath)}
+                        >
+                            <FaChevronDown 
+                                className={`toggle-icon ${collapsedGroups[currentPath] ? 'collapsed' : 'expanded'}`}
+                                aria-label="toggle"
+                                style={{ color: 'white' }} // 设置图标颜色为白色
+                            />
+                            <FaFolder 
+                                className="folder-icon"
+                                aria-label="folder"
+                                style={{ color: 'white' }} // 设置图标颜色为白色
+                            />
+                            <span className="layer-name">{layer.name}</span>
+                        </div>
+                        {!collapsedGroups[currentPath] && (
+                            <div className="group-children" style={{ marginLeft: `${indent + 20}px` }}>
+                                {renderLayerTree(layer.layers, currentPath, indent + 20)}
+                            </div>
+                        )}
+                    </div>
+                );
+            } else if (layer.kind === 'pixel') {
+                return (
+                    <div 
+                        key={uniqueKey}
+                        className="layer-item"
+                        style={{ paddingLeft: `${indent + 20}px` }}
+                    >
+                        <input 
+                            type="checkbox" 
+                            checked={!!selectedLayerPaths[layer.id]}
+                            onChange={() => handleLayerCheckboxChange(layer)}
+                            className="layer-checkbox"
+                        />
+                        <span 
+                            onClick={() => handleLayerCheckboxChange(layer)}
+                            className={`layer-name ${selectedLayerPaths[layer.id] ? 'selected' : ''}`}
+                        >
+                            {layer.name}
+                        </span>
+                    </div>
+                );
+            }
+            return null;
+        });
+    };
+
+    return (
+        <div className="layer-section">
+            <div className="layer-header">
+                <p className="layer-title">待执行图层</p>
+            </div>
+            <div className="layer-list-container" ref={layerListRef}>
+                {layers ? renderLayerTree(layers) : 
+                    <div className="no-document">
+                        没有活动文档
+                    </div>
+                }
+            </div>
+        </div>
+    );
+});
 
 const FileArea = () => {
     const { adjustmentSteps } = useContext(AdjustmentStepsContext);
@@ -285,118 +369,59 @@ const FileArea = () => {
             return count;
         };
 
-        try {
-            const doc = app.activeDocument;
-            if (doc) {
-                const groups = doc.layers.filter(layer => layer.kind === 'group');
-                const pixelLayers = countPixelLayers(doc.layers);
-                setDocumentInfo({
-                    fileName: doc.name,
-                    groupCount: groups.length,
-                    pixelLayerCount: pixelLayers
-                });
-            } else {
+        const doc = app.activeDocument;
+        if (!doc) {
+            if (documentInfo.fileName !== '无活动文档') {
                 setDocumentInfo({
                     fileName: '无活动文档',
                     groupCount: 0,
                     pixelLayerCount: 0
                 });
             }
-        } catch (error) {
-            console.error('更新文档信息失败:', error);
+            return;
         }
-    }, []);
 
-    // 初始化和监听文档变化
-    useEffect(() => {
-        // 初始更新
-        updateDocumentInfo();
-        
-        // 设置定时器
-        const interval = setInterval(updateDocumentInfo, 2000);
-        
-        // 清理函数
-        return () => clearInterval(interval);
-    }, [updateDocumentInfo]);
-
-    // 渲染文件树组件
-    const LayerTreeComponent = () => {
-        // 渲染图层树
-        const renderLayerTree = (layers: Layer[], parentPath = '', indent = 0) => {
-            return layers.map((layer, index) => {
-                const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
-                const uniqueKey = `${currentPath}_${layer.id}`;
-                
-                if (layer.kind === 'group') {
-                    return (
-                        <div key={uniqueKey} className="group-container">
-                            <div 
-                                className="group-header"
-                                onClick={() => toggleGroup(currentPath)}
-                            >
-                                <FaChevronDown 
-                                    className={`toggle-icon ${collapsedGroups[currentPath] ? 'collapsed' : 'expanded'}`}
-                                    aria-label="toggle"
-                                    style={{ color: 'white' }} // 设置图标颜色为白色
-                                />
-                                <FaFolder 
-                                    className="folder-icon"
-                                    aria-label="folder"
-                                    style={{ color: 'white' }} // 设置图标颜色为白色
-                                />
-                                <span className="layer-name">{layer.name}</span>
-                            </div>
-                            {!collapsedGroups[currentPath] && (
-                                <div className="group-children" style={{ marginLeft: `${indent + 20}px` }}>
-                                    {renderLayerTree(layer.layers, currentPath, indent + 20)}
-                                </div>
-                            )}
-                        </div>
-                    );
-                } else if (layer.kind === 'pixel') {
-                    return (
-                        <div 
-                            key={uniqueKey}
-                            className="layer-item"
-                            style={{ paddingLeft: `${indent + 20}px` }}
-                        >
-                            <input 
-                                type="checkbox" 
-                                checked={!!selectedLayerPaths[layer.id]}
-                                onChange={() => handleLayerCheckboxChange(layer)}
-                                className="layer-checkbox"
-                            />
-                            <span 
-                                onClick={() => handleLayerCheckboxChange(layer)}
-                                className={`layer-name ${selectedLayerPaths[layer.id] ? 'selected' : ''}`}
-                            >
-                                {layer.name}
-                            </span>
-                        </div>
-                    );
-                }
-                return null;
-            });
+        const newInfo = {
+            fileName: doc.name,
+            groupCount: doc.layers.filter(layer => layer.kind === 'group').length,
+            pixelLayerCount: countPixelLayers(doc.layers)
         };
 
-        return (
-            <div className="layer-section">
-                <div className="layer-header">
-                    <p className="layer-title">待执行图层</p>
-                </div>
-                <div className="layer-list-container" ref={layerListRef}>
-                    {app.activeDocument ? renderLayerTree(app.activeDocument.layers) : 
-                        <div className="no-document">
-                            没有活动文档
-                        </div>
-                    }
-                </div>
-            </div>
-        );
-    };
+        if (JSON.stringify(newInfo) !== JSON.stringify(documentInfo)) {
+            setDocumentInfo(newInfo);
+        }
+    }, [documentInfo]);
+
+    const debouncedUpdateDocumentInfo = useMemo(
+        () => debounce(updateDocumentInfo, 500),
+        [updateDocumentInfo]
+    );
+
+    useEffect(() => {
+        debouncedUpdateDocumentInfo();
+        const interval = setInterval(debouncedUpdateDocumentInfo, 2000);
+        return () => {
+            clearInterval(interval);
+            debouncedUpdateDocumentInfo.cancel();
+        };
+    }, [debouncedUpdateDocumentInfo]);
+
+    // 使用 useMemo 缓存文档图层
+    const documentLayers = useMemo(() => {
+        return app.activeDocument?.layers || null;
+    }, [app.activeDocument?.id]);
 
     return {
-        LayerTreeComponent,
+        LayerTreeComponent: useCallback(() => (
+            <LayerTreeComponent
+                layers={documentLayers}
+                collapsedGroups={collapsedGroups}
+                selectedLayerPaths={selectedLayerPaths}
+                toggleGroup={toggleGroup}
+                handleLayerCheckboxChange={handleLayerCheckboxChange}
+                layerListRef={layerListRef}
+            />
+        ), [documentLayers, collapsedGroups, selectedLayerPaths, toggleGroup, handleLayerCheckboxChange, layerListRef]),
         handleCreateSnapshot,
         applyAdjustments,
         selectedLayers,
@@ -405,3 +430,4 @@ const FileArea = () => {
 };
 
 export default FileArea;
+
