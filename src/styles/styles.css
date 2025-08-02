@@ -1,0 +1,331 @@
+@font-face {
+  font-family: 'SourceHanSansCN-Normal';
+  /* 修改为相对于CSS文件的正确路径 */
+  src: url('../assets/fonts/SourceHanSansCN-Normal.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+html,body {
+  font-family: 'SourceHanSansCN-Normal', Arial, sans-serif;
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+/* 主容器样式 */
+.main-container {
+  background-color: var(--bg);
+  color: var(--text);
+  display: flex;
+  width: 100%;
+  height: 100%;
+  position: relative;  /* 添加相对定位 */
+}
+
+/* 添加中央分割线 */
+.main-container::after {
+  content: '';
+  position: fixed;  /* 改为 fixed，确保分割线始终在视口中固定位置 */
+  left: 50%;
+  top: 0;
+  bottom: 30px;
+  width: 2px;
+  background-color: var(--border);
+  transform: translateX(-50%);
+  z-index: 1002;  /* 提高 z-index 确保在所有元素之上 */
+  pointer-events: none;
+}
+
+/* 左右两侧共用样式 */
+.section-common {
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+/* 标题区域样式 */
+.header-section {
+  padding: 10px;
+  background-color: var(--bg-sb);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* 标题文字样式 */
+.header-section-text {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text);
+}
+
+/* 左右列表区域样式 */
+.table-content { 
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-top: 1px; 
+  margin-bottom: 84px; /* 为底部按钮预留空间 */
+}
+
+/* 记录列表文字样式 */
+.step-number {
+  min-width: 22px;  /* 增加固定宽度，确保能容纳二位数 */
+  text-align: left; 
+  font-size: 14px;
+  display: inline-block;  /* 使文本对齐生效 */
+}
+
+.step-name {
+  flex: 1;
+  font-size: 14px;
+}
+
+/* 记录列表样式 */
+.operation-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* 记录列表列表项样式 */
+.operation-list li {
+    padding: 0px 15px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 记录列表中齿轮按钮交互样式 */
+.operation-list li sp-action-button {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    padding: 0 5px;
+    min-width: 30px;
+    cursor: pointer;
+}
+
+.operation-list li:hover sp-action-button {
+    opacity: 1;
+}
+
+/* 选中状态下的齿轮按钮样式 */
+.operation-list li.selected sp-action-button {
+    color: var(--gear-selected);
+}
+
+/* 齿轮图标样式 */
+.icon-gear {
+    fill: var(--gear);
+    height: 18px;
+    width: 18px;
+    margin-right: 3px;
+}
+
+.icon-gear svg {
+    height: 18px;
+    width: 18px;
+}
+
+/* 记录列表中普通条目交互样式 */
+.operation-list li:hover {
+    background-color: var(--bg-hover);
+}
+
+.operation-list li.selected {
+    background-color: var(--bg-selected);
+    color: var(--text-selected);
+}
+
+.operation-list li.selected .step-number {
+  color: var(--text-selected);
+}
+
+.layer-list {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+.layer-list .group-button > ul {
+  padding-left: 28px ;  /* 使用  确保样式生效 */
+}
+
+/* 第一层级的 ul 不需要缩进 */
+.layer-list > ul {
+    padding-left: 0;
+}
+
+.layer-item {
+    padding: 8px 0px;  /* 修改内边距 */
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    font-size: 14px;  /* 添加字体大小 */
+}
+
+.group-button {
+    margin: 8px 0;  /* 添加这行，增加组之间的间距 */
+    cursor: pointer;
+    user-select: none;
+}
+
+.group-header {
+    padding: 4px 0px;  /* 修改内边距 */
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    border-bottom: 2px solid var(--border);
+    width: 100%;
+    font-size: 16px;
+}
+
+.layer-list .group-button {
+  margin-bottom: 5px;
+}
+
+.layer-list ul {
+  list-style: none;
+  padding-left: 12px;
+}
+
+.layer-name {
+  color: var(--text);
+}
+
+.layer-checkbox {
+  margin: 0 8px 0 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.layer-name.selected {
+  color: var(--text-selected);
+}
+  
+.toggle-icon {
+  margin-right: 8px;
+  transition: transform 0.2s;
+}
+
+.folder-icon {
+  margin-right: 8px;
+}
+
+ /* 滚动条 */
+.scrollable-area {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-sb);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--bg-hover);
+}
+
+/* 按钮区域样式 */
+.bottom-buttons-section {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  background-color: var(--bg-sb);
+  border-top: 1px solid var(--border);
+  position: fixed;  
+  bottom: 30px;   
+  width: 50%;    
+  box-sizing: border-box;
+  z-index: 1000;     /* 增加 z-index 确保按钮区域在上层 */
+}
+
+.icon {
+  fill: var(--icon);
+  height: 14px;
+  width: 14px;
+  margin-top: 2px;
+  margin-right: 3px;
+}
+
+.icon svg {
+  fill: var(--icon);
+  height: 14px;
+  width: 14px;
+}
+
+/* 上拉菜单样式 */
+.dropdown {
+  display: inline-block;
+}
+
+.dropdown-content {
+  min-width: 130px;
+}
+
+.dropdown-content a {
+  background-color: var(--bg);/* 有效 */
+  color: var(--text);/* 有效 */
+  border: 1px solid var(--border);/* 有效 */
+  padding: 8px 14px;/* 有效 */
+  display: block;
+  cursor: pointer;
+  font-size: 12px;  /* 添加字体大小 */
+}
+
+.dropdown-content a:hover {
+  background-color: var(--bg-hover);/* 有效 */
+}
+
+.info-section {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  background: var(--bg-sb);
+  border-top: 2px solid var(--border);
+  height: 30px;
+  width: 100%;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  z-index: 1000;
+}
+
+.doc-info {
+  font-size: 10px;
+  color: var(--text-sb);
+  text-align: left;
+  position: relative;  
+  bottom: 1px;        
+}
+
+.copyright-info {
+  font-size: 10px;
+  color: var(--text-sb);
+  text-align: right;
+  position: relative;  
+  bottom: 2px;   
+}
