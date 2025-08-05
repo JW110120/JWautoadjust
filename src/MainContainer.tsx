@@ -25,7 +25,17 @@ const MainContainerContent: React.FC = () => {
         stopRecording,
         deleteAdjustmentAndLayer,
         applyAdjustment,
-        applyDirectAdjustment
+        applyDirectAdjustment,
+        selectedIndices,
+        handleItemSelect,
+        handleBlankAreaClick,
+        handleDragStart,
+        handleDragOver,
+        handleDragLeave,
+        handleDrop,
+        deleteSelectedItems,
+        draggedIndex,
+        dragOverIndex
     } = useRecord();
 
     const handleRecordClick = async () => {
@@ -217,14 +227,65 @@ const MainContainerContent: React.FC = () => {
             <div className="header-section">
                 <p className="header-section-text">记录操作信息</p>
             </div>
-            <div className="table-content">
-                    <ul className="operation-list">
-                        {adjustmentSteps.map((step, index) => (
+            <div className="table-content" onClick={(e) => {
+                // 如果点击的不是li元素或li的子元素，则取消选择
+                const clickedElement = e.target as HTMLElement;
+                const isListItem = clickedElement.tagName === 'LI' || clickedElement.closest('li');
+                if (!isListItem) {
+                    handleBlankAreaClick();
+                }
+            }}>
+                    <ul className="operation-list"
+                        onDragOver={(e) => {
+                            e.preventDefault();
+                            // 检查是否拖拽到列表顶部空白区域
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const y = e.clientY - rect.top;
+                            if (y < 20) { // 顶部20px区域
+                                handleDragOver(e, 0);
+                            }
+                        }}
+                        onDrop={async (e) => {
+                            // 检查是否拖拽到列表顶部空白区域
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const y = e.clientY - rect.top;
+                            if (y < 20) { // 顶部20px区域
+                                await handleDrop(e, 0);
+                            }
+                        }}>
+                        {adjustmentSteps.map((step, index) => {
+                            const isSelected = selectedIndices.size > 0 ? selectedIndices.has(index) : index === selectedStepIndex;
+                            const isDraggedOver = dragOverIndex === index;
+                            const isDragged = draggedIndex === index;
+                            
+                            return (
                             <li 
                                 key={index}
-                                onClick={() => handleStepClick(index)}
+                                draggable={true}
+                                onClick={(e) => {
+                                    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                                        handleItemSelect(index, e);
+                                    } else {
+                                        handleStepClick(index);
+                                    }
+                                }}
                                 onDoubleClick={() => handleStepDoubleClick(index)}
-                                className={`${index === selectedStepIndex ? 'selected' : ''}`}
+                                onDragStart={(e) => handleDragStart(e, index)}
+                                onDragOver={(e) => handleDragOver(e, index)}
+                                onDragLeave={handleDragLeave}
+                                onDrop={async (e) => await handleDrop(e, index)}
+                                className={`${
+                                    isSelected ? 'selected' : ''
+                                } ${
+                                    isDraggedOver ? 'drag-over' : ''
+                                } ${
+                                    isDragged ? 'dragging' : ''
+                                }`}
+                                style={{
+                                    opacity: isDragged ? 0.5 : 1,
+                                    transform: isDraggedOver ? 'translateY(-2px)' : 'none',
+                                    transition: 'all 0.2s ease'
+                                }}
                             >
 
                                 <div>
@@ -254,7 +315,8 @@ const MainContainerContent: React.FC = () => {
                                     </div>
                                 </sp-action-button>
                             </li>
-                        ))}
+                            );
+                        })}
                     </ul>
             </div>
             <div className="bottom-buttons-section">
@@ -268,8 +330,14 @@ const MainContainerContent: React.FC = () => {
                 />
                 <DeleteButton 
                     isRecording={isRecording}
-                    hasSteps={adjustmentSteps.length > 0 && selectedStepIndex >= 0}
-                    onDelete={() => handleDeleteStep(selectedStepIndex)}
+                    hasSteps={adjustmentSteps.length > 0 && (selectedStepIndex >= 0 || selectedIndices.size > 0)}
+                    onDelete={() => {
+                        if (selectedIndices.size > 0) {
+                            deleteSelectedItems();
+                        } else {
+                            handleDeleteStep(selectedStepIndex);
+                        }
+                    }}
                     index={selectedStepIndex}
                 />
             </div>

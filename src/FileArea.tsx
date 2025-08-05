@@ -13,6 +13,7 @@ import { useProcessing } from './contexts/ProcessingContext';
     selectedLayerPaths, 
     toggleGroup, 
     handleLayerCheckboxChange,
+    handleBlankAreaClick,
 }) => {
     // 渲染图层树
     const renderLayerTree = (layers: Layer[], parentPath = '', indent = 0) => {
@@ -109,16 +110,17 @@ import { useProcessing } from './contexts/ProcessingContext';
                 return (
                     <li  
                         key={uniqueKey}
-                        className="layer-item" 
+                        className="layer-item"
+                        onClick={(e) => e.stopPropagation()}
                     >
                         <input 
                             type="checkbox" 
                             checked={selectedLayerPaths[`${currentPath}_${index}`] === true}
-                            onChange={() => handleLayerCheckboxChange(layer, currentPath, index)}
+                            onChange={(e) => handleLayerCheckboxChange(layer, currentPath, index, e)}
                             className="layer-checkbox"
                         />
                         <span 
-                            onClick={() => handleLayerCheckboxChange(layer, currentPath, index)}
+                            onClick={(e) => handleLayerCheckboxChange(layer, currentPath, index, e)}
                             className={`layer-name ${selectedLayerPaths[`${currentPath}_${index}`] ? 'selected' : ''}`}
                         >
                             {displayName}
@@ -131,9 +133,9 @@ import { useProcessing } from './contexts/ProcessingContext';
     };
 
     return (
-        <div className="layer-list"> 
+        <div className="layer-list" onClick={handleBlankAreaClick}> 
             {layers ? (
-                <ul> 
+                <ul onClick={(e) => e.stopPropagation()}> 
                     {renderLayerTree(layers)}
                 </ul>
             ) : (
@@ -157,6 +159,10 @@ const FileArea: React.FC = () => {
     const [progress, setProgress] = useState(0);
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
     const [selectedLayerPaths, setSelectedLayerPaths] = useState<Record<string, boolean>>({});
+    // 多选状态管理
+    const [selectedLayerIndices, setSelectedLayerIndices] = useState(new Set());
+    const [lastClickedLayerIndex, setLastClickedLayerIndex] = useState(null);
+    const [selectedLayerIndex, setSelectedLayerIndex] = useState(null);
     const { ref: layerListRef } = useScrollPosition();
 
     // 获取像素图层
@@ -439,34 +445,191 @@ const FileArea: React.FC = () => {
         }));
     }, []);
 
-    // 处理图层选择状态变化
-    const handleLayerCheckboxChange = useCallback((layer: Layer, currentPath: string, index: number) => {
+    // 处理图层选择状态变化（支持多选）
+    const handleLayerCheckboxChange = useCallback((layer: Layer, currentPath: string, index: number, event?: React.MouseEvent) => {
         const layerIdentifier = `${currentPath}_${index}`;
-        const isSelected = !selectedLayerPaths[layerIdentifier];
         
-        setSelectedLayerPaths(prev => ({
-            ...prev,
-            [layerIdentifier]: isSelected
-        }));
-        
-        setSelectedLayers(prev => {
-            if (isSelected) {
-                // 保存原始图层对象的关键属性
+        if (event && (event.ctrlKey || event.metaKey)) {
+            // Ctrl+点击：切换选中状态
+            if (selectedLayerIndex === index && selectedLayerIndices.size === 0) {
+                setSelectedLayerIndex(null);
+                setLastClickedLayerIndex(null);
+                setSelectedLayerPaths(prev => ({
+                    ...prev,
+                    [layerIdentifier]: false
+                }));
+                setSelectedLayers(prev => prev.filter(l => l.identifier !== layerIdentifier));
+                return;
+            }
+            
+            const newSelectedIndices = new Set(selectedLayerIndices);
+            
+            // 如果当前是单选状态，先将单选项加入多选集合
+            if (selectedLayerIndex !== null && selectedLayerIndices.size === 0) {
+                newSelectedIndices.add(selectedLayerIndex);
+            }
+            
+            const isCurrentlySelected = selectedLayerPaths[layerIdentifier];
+            
+            if (isCurrentlySelected) {
+                newSelectedIndices.delete(index);
+                setSelectedLayerPaths(prev => ({
+                    ...prev,
+                    [layerIdentifier]: false
+                }));
+                setSelectedLayers(prev => prev.filter(l => l.identifier !== layerIdentifier));
+            } else {
+                newSelectedIndices.add(index);
+                setSelectedLayerPaths(prev => ({
+                    ...prev,
+                    [layerIdentifier]: true
+                }));
                 const layerInfo = {
                     ...layer,
                     identifier: layerIdentifier,
                     name: layer.name,
-                    _id: layer._id,  // 保存原始_id
-                    id: layer.id,    // 保存原始id
+                    _id: layer._id,
+                    id: layer.id,
                     bounds: layer.bounds,
                     parent: layer.parent
                 };
-                return [...prev, layerInfo];
-            } else {
-                return prev.filter(l => l.identifier !== layerIdentifier);
+                setSelectedLayers(prev => [...prev, layerInfo]);
             }
-        });
-    }, [selectedLayerPaths]);
+            
+            setSelectedLayerIndices(newSelectedIndices);
+            setLastClickedLayerIndex(index);
+            
+            // 如果多选集合为空，清空所有选中状态
+            if (newSelectedIndices.size === 0) {
+                setSelectedLayerIndex(null);
+            } else if (newSelectedIndices.size === 1) {
+                // 如果只剩一个，转为单选状态
+                const remainingIndex = Array.from(newSelectedIndices)[0];
+                setSelectedLayerIndex(remainingIndex);
+                setSelectedLayerIndices(new Set());
+            } else {
+                // 多选时清空单选状态
+                setSelectedLayerIndex(null);
+            }
+        } else if (event && event.shiftKey && lastClickedLayerIndex !== null) {
+            // Shift+点击：范围选择
+            const newSelectedIndices = new Set(selectedLayerIndices);
+            
+            // 如果当前是单选状态，先将单选项加入多选集合
+            if (selectedLayerIndex !== null && selectedLayerIndices.size === 0) {
+                newSelectedIndices.add(selectedLayerIndex);
+            }
+            
+            const start = Math.min(lastClickedLayerIndex, index);
+            const end = Math.max(lastClickedLayerIndex, index);
+            
+            // 需要获取所有可见图层的索引映射
+            const allVisibleLayers = [];
+            const collectVisibleLayers = (layers, parentPath = '') => {
+                layers.forEach((layer, idx) => {
+                    const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
+                    if (layer.kind === 'pixel') {
+                        const hasContent = layer.bounds && (layer.bounds.width > 0 && layer.bounds.height > 0);
+                        if (hasContent) {
+                            allVisibleLayers.push({ layer, path: currentPath, index: idx });
+                        }
+                    } else if (layer.kind === 'group' && layer.layers) {
+                        collectVisibleLayers(layer.layers, currentPath);
+                    }
+                });
+            };
+            
+            if (documentLayers) {
+                collectVisibleLayers(documentLayers);
+            }
+            
+            for (let i = start; i <= end && i < allVisibleLayers.length; i++) {
+                const layerData = allVisibleLayers[i];
+                if (layerData) {
+                    const layerId = `${layerData.path}_${layerData.index}`;
+                    newSelectedIndices.add(i);
+                    setSelectedLayerPaths(prev => ({
+                        ...prev,
+                        [layerId]: true
+                    }));
+                    
+                    const layerInfo = {
+                        ...layerData.layer,
+                        identifier: layerId,
+                        name: layerData.layer.name,
+                        _id: layerData.layer._id,
+                        id: layerData.layer.id,
+                        bounds: layerData.layer.bounds,
+                        parent: layerData.layer.parent
+                    };
+                    
+                    setSelectedLayers(prev => {
+                        const exists = prev.find(l => l.identifier === layerId);
+                        return exists ? prev : [...prev, layerInfo];
+                    });
+                }
+            }
+            
+            setSelectedLayerIndices(newSelectedIndices);
+            setSelectedLayerIndex(null); // 多选时清空单选状态
+        } else {
+            // 普通点击：根据当前状态决定行为
+            if (selectedLayerIndices.size > 0) {
+                // 如果当前是多选状态，点击任何项目都转为单选该项目
+                // 清空所有选中状态
+                setSelectedLayerPaths({});
+                setSelectedLayers([]);
+                setSelectedLayerIndices(new Set());
+                
+                // 选中当前项目
+                setSelectedLayerIndex(index);
+                setSelectedLayerPaths({ [layerIdentifier]: true });
+                const layerInfo = {
+                    ...layer,
+                    identifier: layerIdentifier,
+                    name: layer.name,
+                    _id: layer._id,
+                    id: layer.id,
+                    bounds: layer.bounds,
+                    parent: layer.parent
+                };
+                setSelectedLayers([layerInfo]);
+                setLastClickedLayerIndex(index);
+            } else {
+                // 单选状态的普通点击
+                const isSelected = !selectedLayerPaths[layerIdentifier];
+                
+                if (isSelected) {
+                    setSelectedLayerIndex(index);
+                    setSelectedLayerPaths({ [layerIdentifier]: true });
+                    const layerInfo = {
+                        ...layer,
+                        identifier: layerIdentifier,
+                        name: layer.name,
+                        _id: layer._id,
+                        id: layer.id,
+                        bounds: layer.bounds,
+                        parent: layer.parent
+                    };
+                    setSelectedLayers([layerInfo]);
+                } else {
+                    setSelectedLayerIndex(null);
+                    setSelectedLayerPaths({});
+                    setSelectedLayers([]);
+                }
+                setLastClickedLayerIndex(index);
+            }
+        }
+    }, [selectedLayerPaths, selectedLayerIndices, selectedLayerIndex, lastClickedLayerIndex, documentLayers]);
+
+    // 处理空白区域点击，取消选择
+    const handleBlankAreaClick = useCallback(() => {
+        setSelectedLayerIndex(null);
+        setSelectedLayerIndices(new Set());
+        setLastClickedLayerIndex(null);
+        setSelectedLayerPaths({});
+        setSelectedLayers([]);
+    }, []);
 
     // 使用 useMemo 缓存文档图层，但只依赖updateTrigger
     const documentLayers = useMemo(() => {
@@ -506,9 +669,10 @@ const FileArea: React.FC = () => {
                 selectedLayerPaths={selectedLayerPaths}
                 toggleGroup={toggleGroup}
                 handleLayerCheckboxChange={handleLayerCheckboxChange}
+                handleBlankAreaClick={handleBlankAreaClick}
                 layerListRef={layerListRef}
             />
-        ), [documentLayers, collapsedGroups, selectedLayerPaths, toggleGroup, handleLayerCheckboxChange, layerListRef]),
+        ), [documentLayers, collapsedGroups, selectedLayerPaths, toggleGroup, handleLayerCheckboxChange, handleBlankAreaClick, layerListRef]),
         applyAdjustments,
         selectedLayers,
         progress,
