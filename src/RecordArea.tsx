@@ -1,11 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { app } from 'photoshop';
 import { useAdjustmentSteps } from './contexts/AdjustmentStepsContext';
-import { AdjustmentMenu as AdjustmentMenuComponent } from './components/AdjustmentMenu';
-import { eventToNameMap } from './styles/Constants';
 import { createSampleLayer } from './utils/layerUtils';
 import { useRecordContext } from './contexts/RecordContext';
-import { adjustmentMenuItems } from './styles/Constants';
 import { useProcessing } from './contexts/ProcessingContext';
 
 // 录制区域组件
@@ -16,7 +13,8 @@ export const useRecord = () => {
         deleteAdjustmentStep, 
         clearAllSteps,
         selectedIndex,
-        setSelectedIndex
+        setSelectedIndex,
+        setAdjustmentSteps
     } = useAdjustmentSteps();
     
     // 多选状态管理
@@ -24,12 +22,34 @@ export const useRecord = () => {
     const [lastClickedIndex, setLastClickedIndex] = useState(null);
     const [draggedIndex, setDraggedIndex] = useState(null);
     const [dragOverIndex, setDragOverIndex] = useState(null); 
+    
+    // PS风格拖拽状态
+    const [dropTargetIndex, setDropTargetIndex] = useState(null); // 拖拽到哪个位置
+    const [dropPosition, setDropPosition] = useState(null); // 'above' | 'below'
     const { isProcessing } = useProcessing();  // 获取处理状态
     const { isRecording, setIsRecording, isRecordingRef } = useRecordContext();
     const [notificationListeners, setNotificationListeners] = useState([]);
     const [sampleLayerId, setSampleLayerId] = useState(null);
+    
+    // 添加拖拽防抖和清理机制
+    const dragTimeoutRef = useRef(null);
+    const syncTimeoutRef = useRef(null);
+    
+    // 清理所有拖拽状态的通用函数
+    const clearAllDragStates = () => {
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+        setDropTargetIndex(null);
+        setDropPosition(null);
+        
+        // 清理拖拽计时器
+        if (dragTimeoutRef.current) {
+            clearTimeout(dragTimeoutRef.current);
+            dragTimeoutRef.current = null;
+        }
+    };
 
-    // 单次智能滤镜同步给记录面板的
+    // 单次智能滤镜同步给记录面板的 - 优化版本使用批量更新
     const syncAdjustmentLayers = async (layerId) => {
         try {
             const doc = app.activeDocument;
@@ -46,19 +66,26 @@ export const useRecord = () => {
             
             const filterFX = result[0]?.smartObject?.filterFX || [];
             
-            // 清空现有步骤
-            clearAllSteps();
+            // 构建新的步骤数组和显示名映射
+            const newSteps = [];
+            const newDisplayNames = {};
             
-            // 从上到下添加滤镜记录
-            for (let i = 0; i < filterFX.length; i++) {
+            // 从最新到最老添加滤镜记录（倒序遍历filterFX数组）
+            // 这样智能滤镜索引大的（最新的）会在newSteps数组开头，显示在最上方
+            for (let i = filterFX.length - 1; i >= 0; i--) {
                 const filter = filterFX[i];
                 const filterName = filter.name.split('...')[0].trim();
                 
-                const timestamp = new Date().getTime() - (filterFX.length - i) * 1000;
+                // 时间戳应该反映真实的添加顺序：索引越大，时间戳越新
+                const timestamp = new Date().getTime() - (filterFX.length - 1 - i) * 1000;
                 const step = `${filterName} (${timestamp})`;
                 
-                addAdjustmentStep(step, filterName, true);
+                newSteps.push(step);
+                newDisplayNames[step] = filterName;
             }
+            
+            // 使用批量更新API，一次性更新所有状态
+            setAdjustmentSteps(newSteps, newDisplayNames);
         } catch (error) {
             console.error('同步调整图层失败:', error);
             const { showAlert } = require("photoshop").core;
@@ -190,73 +217,56 @@ export const useRecord = () => {
 
     // 处理项目选择（支持多选）
     const handleItemSelect = (index, event) => {
-        if (event && (event.ctrlKey || event.metaKey)) {
-            // Ctrl+点击：切换选中状态
-            if (selectedIndex === index && selectedIndices.size === 0) {
-                setSelectedIndex(null);
-                setLastClickedIndex(null);
+        // 优先处理 Shift 区间选择
+        if (event && event.shiftKey) {
+            const anchor = lastClickedIndex !== null ? lastClickedIndex : selectedIndex;
+            if (anchor === null || anchor === undefined) {
+                // 没有锚点则退化为单选
+                setSelectedIndex(index);
+                setSelectedIndices(new Set());
+                setLastClickedIndex(index);
                 return;
             }
-            
-            const newSelectedIndices = new Set(selectedIndices);
-            
-            // 如果当前是单选状态，先将单选项加入多选集合
-            if (selectedIndex !== null && selectedIndices.size === 0) {
-                newSelectedIndices.add(selectedIndex);
-            }
-            
-            if (newSelectedIndices.has(index)) {
-                newSelectedIndices.delete(index);
-            } else {
-                newSelectedIndices.add(index);
-            }
-            
-            setSelectedIndices(newSelectedIndices);
-            setLastClickedIndex(index);
-            
-            // 如果多选集合为空，清空所有选中状态
-            if (newSelectedIndices.size === 0) {
-                setSelectedIndex(null);
-            } else if (newSelectedIndices.size === 1) {
-                // 如果只剩一个，转为单选状态
-                const remainingIndex = Array.from(newSelectedIndices)[0];
-                setSelectedIndex(remainingIndex);
-                setSelectedIndices(new Set());
-            } else {
-                // 多选时清空单选状态
-                setSelectedIndex(null);
-            }
-        } else if (event && event.shiftKey && lastClickedIndex !== null) {
-            // Shift+点击：范围选择
-            const newSelectedIndices = new Set(selectedIndices);
-            
-            // 如果当前是单选状态，先将单选项加入多选集合
-            if (selectedIndex !== null && selectedIndices.size === 0) {
-                newSelectedIndices.add(selectedIndex);
-            }
-            
-            const start = Math.min(lastClickedIndex, index);
-            const end = Math.max(lastClickedIndex, index);
-            for (let i = start; i <= end; i++) {
-                newSelectedIndices.add(i);
-            }
-            
-            setSelectedIndices(newSelectedIndices);
-            setSelectedIndex(null); // 多选时清空单选状态
-        } else {
-            // 普通点击：根据当前状态决定行为
-            if (selectedIndices.size > 0) {
-                // 如果当前是多选状态，点击任何项目都转为单选该项目
-                setSelectedIndex(index);
-                setSelectedIndices(new Set());
-                setLastClickedIndex(index);
-            } else {
-                // 单选状态的普通点击
-                setSelectedIndex(index);
-                setSelectedIndices(new Set());
-                setLastClickedIndex(index);
-            }
+            const start = Math.min(anchor, index);
+            const end = Math.max(anchor, index);
+            const range = new Set<number>();
+            for (let i = start; i <= end; i++) range.add(i);
+            setSelectedIndices(range);
+            setSelectedIndex(null);
+            // 保持锚点不变，方便继续扩展选择
+            return;
         }
+
+        // Ctrl/Meta 切换选择
+        if (event && (event.ctrlKey || event.metaKey)) {
+            const newSet = new Set(selectedIndices);
+            
+            // 若当前为单选，先将单选加入集合
+            if (selectedIndex !== null && selectedIndices.size === 0) {
+                newSet.add(selectedIndex);
+            }
+            if (newSet.has(index)) newSet.delete(index); else newSet.add(index);
+            
+            if (newSet.size === 0) {
+                setSelectedIndex(null);
+                setSelectedIndices(new Set());
+            } else if (newSet.size === 1) {
+                const only = Array.from(newSet)[0];
+                setSelectedIndex(only);
+                setSelectedIndices(new Set());
+                setLastClickedIndex(only);
+            } else {
+                setSelectedIndices(newSet);
+                setSelectedIndex(null);
+                setLastClickedIndex(index);
+            }
+            return;
+        }
+
+        // 普通点击：单选并更新锚点
+        setSelectedIndex(index);
+        setSelectedIndices(new Set());
+        setLastClickedIndex(index);
     };
 
     // 处理空白区域点击，取消选择
@@ -273,27 +283,66 @@ export const useRecord = () => {
         e.dataTransfer.setData('text/html', e.target.outerHTML);
     };
 
-    // 拖拽经过
+    // 拖拽悬停 - 简化逻辑以避免抖动和状态不一致
     const handleDragOver = (e, index) => {
         e.preventDefault();
+        
+        if (draggedIndex === null) return;
+        
+        // 清理之前的计时器
+        if (dragTimeoutRef.current) clearTimeout(dragTimeoutRef.current);
+        
+        const target = e.currentTarget;
+        const rect = target.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const isUpperHalf = y < rect.height / 2;
+        
+        // 清理旧状态，设置新状态
         setDragOverIndex(index);
+        
+        // 决定显示哪个位置的拖拽线
+        if (isUpperHalf) {
+            // 鼠标在上半部分：显示当前项的上边线
+            setDropTargetIndex(index);
+            setDropPosition('above');
+        } else {
+            // 鼠标在下半部分：显示下一项的上边线
+            // 除非是最后一项，则显示当前项的下边线
+            if (index === adjustmentSteps.length - 1) {
+                setDropTargetIndex(index);
+                setDropPosition('below');
+            } else {
+                setDropTargetIndex(index + 1);
+                setDropPosition('above');
+            }
+        }
     };
 
     // 拖拽离开
     const handleDragLeave = () => {
-        setDragOverIndex(null);
+        if (dragTimeoutRef.current) clearTimeout(dragTimeoutRef.current);
+        clearAllDragStates();
     };
 
     // 拖拽放下
     const handleDrop = async (e, dropIndex) => {
         e.preventDefault();
+        if (dragTimeoutRef.current) clearTimeout(dragTimeoutRef.current);
         
-        if (draggedIndex === null || draggedIndex === dropIndex) {
-            setDraggedIndex(null);
-            setDragOverIndex(null);
+        if (draggedIndex === null) {
+            clearAllDragStates();
             return;
         }
 
+        // 依据PS逻辑：仅有上边界高亮表示插入到该项上方；
+        // 只有拖到所有项的最下方时，插入到最后。
+        let actualDropIndex;
+        if (dropTargetIndex === null || dropPosition === null) {
+            actualDropIndex = dropIndex;
+        } else {
+            actualDropIndex = dropPosition === 'above' ? dropTargetIndex : dropTargetIndex + 1;
+        }
+        
         try {
             const { executeAsModal, showAlert } = require("photoshop").core;
             const { batchPlay } = require("photoshop").action;
@@ -319,18 +368,400 @@ export const useRecord = () => {
                     const filterFX = result[0]?.smartObject?.filterFX || [];
                     
                     if (filterFX.length > 0) {
-                        // 计算智能滤镜的索引（从底部开始计数）
-                        const sourceFilterIndex = filterFX.length - 1 - draggedIndex;
-                        // 当拖拽到最顶部时，targetFilterIndex应该是filterFX.length
-                        const targetFilterIndex = dropIndex === 0 ? filterFX.length : filterFX.length - 1 - dropIndex;
+                        // 左侧 index 0 是顶部（最新），PS 的 filterFX 索引 1 表示最底部
+                        // 先将 UI 索引转换为 PS 的 1-based 索引
+                        const sourceZero = filterFX.length - 1 - draggedIndex; // 0-based，自底向上
+                        const targetZero = actualDropIndex === 0 ? filterFX.length : (filterFX.length - 1 - actualDropIndex); // mixed，后续再调整
+
+                        const sourceIndex = sourceZero + 1; // 1-based
+                        // 目标位置：在PS中 move to 的含义是“插入到该索引之前”，因此当拖到UI顶部(actualDropIndex=0)时，应 to 到 index=filterFX.length（也就是最顶部之前，相当于到最上方）
+                        const targetIndex = actualDropIndex === 0 ? filterFX.length : (targetZero + 1);
+
+                        if (sourceIndex !== targetIndex) {
+                            await batchPlay([
+                                {
+                                    _obj: "move",
+                                    _target: [
+                                        {
+                                            _ref: "filterFX",
+                                            _index: sourceIndex
+                                        },
+                                        {
+                                            _ref: "layer",
+                                            _enum: "ordinal",
+                                            _value: "targetEnum"
+                                        }
+                                    ],
+                                    to: {
+                                        _ref: [
+                                            {
+                                                _ref: "filterFX",
+                                                _index: targetIndex
+                                            },
+                                            {
+                                                _ref: "layer",
+                                                _enum: "ordinal",
+                                                _value: "targetEnum"
+                                            }
+                                        ]
+                                    },
+                                    _isCommand: false
+                                }
+                            ], { synchronousExecution: true });
+                        }
+                    }
+                }, { "commandName": "移动智能滤镜" });
+            }
+
+            // 移动调整步骤
+            // 移动调整步骤
+            const newSteps = [...adjustmentSteps];
+            const { displayNames } = adjustmentSteps.reduce((acc, step) => {
+                const displayName = step.split(' (')[0];
+                acc.displayNames[step] = displayName;
+                return acc;
+            }, { displayNames: {} });
+            
+            // 处理多选拖拽
+            if (selectedIndices.size > 0) {
+                // 获取所有选中的项目（按原始顺序）
+                const selectedItems = Array.from(selectedIndices).sort((a, b) => a - b).map(index => ({
+                    index,
+                    step: newSteps[index]
+                }));
+
+                // ====== UI 数据结构更新 ======
+                // 1. 提取选中的记录
+                const selectedSteps = selectedItems.map(item => item.step);
+                
+                // 2. 从原数组中移除选中的记录（从后往前删除，避免索引错乱）
+                for (let i = selectedItems.length - 1; i >= 0; i--) {
+                    newSteps.splice(selectedItems[i].index, 1);
+                }
+                
+                // 3. 计算实际插入位置
+                // actualDropIndex 是目标位置，需要考虑已删除的项目对索引的影响
+                let actualInsertIndex = actualDropIndex;
+                for (const item of selectedItems) {
+                    if (item.index < actualDropIndex) {
+                        actualInsertIndex--;
+                    }
+                }
+                
+                // 4. 将选中的记录作为整体插入到目标位置
+                // 使用 splice 的展开语法一次性插入所有记录
+                newSteps.splice(actualInsertIndex, 0, ...selectedSteps);
+                
+                // 5. 使用批量更新API
+                setAdjustmentSteps(newSteps, displayNames);
+                
+                // 6. 更新选中状态：选中的记录现在位于 actualInsertIndex 开始的连续位置
+                const newSelectedIndices = new Set();
+                for (let i = 0; i < selectedSteps.length; i++) {
+                    newSelectedIndices.add(actualInsertIndex + i);
+                }
+                setSelectedIndices(newSelectedIndices);
+                setSelectedIndex(null); // 保持多选状态
+
+                // ====== 多选拖拽智能滤镜同步 ======
+                if (sampleLayerId) {
+                    // 延迟触发完整的重建式同步，确保不干扰已完成的UI更新
+                    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+                    syncTimeoutRef.current = setTimeout(async () => {
+                        try {
+                            await syncAdjustmentLayers(sampleLayerId);
+                            console.log("多选拖拽后的智能滤镜同步完成");
+                        } catch (error) {
+                            console.error('多选拖拽后同步失败:', error);
+                        }
+                    }, 600);
+                }
+            } else {
+                // 单选拖拽
+                const draggedStep = newSteps[draggedIndex];
+                
+                // 删除原位置的项目
+                newSteps.splice(draggedIndex, 1);
+                
+                // 计算正确的插入位置
+                let insertIndex;
+                if (draggedIndex < actualDropIndex) {
+                    insertIndex = actualDropIndex - 1;
+                } else {
+                    insertIndex = actualDropIndex;
+                }
+                
+                newSteps.splice(insertIndex, 0, draggedStep);
+                
+                // 使用批量更新API
+                setAdjustmentSteps(newSteps, displayNames);
+                
+                // 更新选中状态到新位置（始终保持拖动项被选中）
+                setSelectedIndex(insertIndex);
+                setSelectedIndices(new Set());
+                setLastClickedIndex(insertIndex);
+
+                // ====== 单选拖拽智能滤镜同步 ======
+                // 单选时立即同步智能滤镜移动，保持UI与PS的高度一致性
+                if (sampleLayerId) {
+                    setTimeout(async () => {
+                        try {
+                            await syncAdjustmentLayers(sampleLayerId);
+                            console.log("单选拖拽后的智能滤镜同步完成");
+                        } catch (error) {
+                            console.error('单选拖拽后同步失败:', error);
+                        }
+                    }, 200);
+                }
+            }
+            
+        } catch (error) {
+            console.error('拖拽移动失败:', error);
+            const { showAlert } = require("photoshop").core;
+            showAlert({ message: `拖拽移动失败: ${error.message}` });
+        } finally {
+            clearAllDragStates();
+        }
+    };
+
+    // 删除选中的项目
+    const deleteSelectedItems = async () => {
+        if (isRecording || !app.activeDocument) return;
+
+        // 防重入：删除进行中则直接返回
+        if ((deleteSelectedItems as any)._inProgress) {
+            console.warn('删除操作进行中，忽略重复请求');
+            return;
+        }
+        (deleteSelectedItems as any)._inProgress = true;
+
+        const { executeAsModal, showAlert } = require("photoshop").core;
+        const { batchPlay } = require("photoshop").action;
+
+        try {
+            if (sampleLayerId) {
+                // 获取要删除的索引列表
+                let indicesToDelete = [] as number[];
+                if (selectedIndices.size > 0) {
+                    indicesToDelete = Array.from(selectedIndices).filter(i => i >= 0).sort((a, b) => b - a); // 从后往前删除
+                } else if (selectedIndex !== null && selectedIndex >= 0) {
+                    indicesToDelete = [selectedIndex];
+                }
+
+                if (indicesToDelete.length === 0) return;
+
+                // 先立即清空本地选中状态，提升交互反馈
+                setSelectedIndex(null);
+                setSelectedIndices(new Set());
+                setLastClickedIndex(null);
+
+                // 暂时禁用同步
+                const currentSyncInterval = syncInterval.current;
+                if (currentSyncInterval) {
+                    clearInterval(currentSyncInterval);
+                }
+
+                await executeAsModal(async () => {
+                    // 选中样本图层
+                    await batchPlay([
+                        {
+                            _obj: "select",
+                            _target: [{ _ref: "layer", _id: sampleLayerId }],
+                            makeVisible: true,
+                            _options: { dialogOptions: "dontDisplay" }
+                        }
+                    ], { synchronousExecution: true });
+
+                    // 删除选中的滤镜（从后往前删除）
+                    for (const index of indicesToDelete) {
+                        // 每次删除前都重新获取智能滤镜信息
+                        const result = await batchPlay([
+                            {
+                                _obj: "get",
+                                _target: [{ _ref: "layer", _id: sampleLayerId }],
+                                _options: { dialogOptions: "dontDisplay" }
+                            }
+                        ], { synchronousExecution: true });
+
+                        const filterFX = result[0]?.smartObject?.filterFX || [];
+
+                        if (filterFX.length === 0) {
+                            console.warn(`智能滤镜已被清空，跳过索引 ${index}`);
+                            continue;
+                        }
+
+                        if (filterFX.length === 1) {
+                            // 只剩一个滤镜时，删除所有滤镜
+                            await batchPlay([
+                                {
+                                    _obj: "delete",
+                                    _target: [
+                                        { _ref: "filterFX" },
+                                        {
+                                            _ref: "layer",
+                                            _enum: "ordinal",
+                                            _value: "targetEnum"
+                                        }
+                                    ],
+                                    _options: { dialogOptions: "dontDisplay" }
+                                }
+                            ], { synchronousExecution: true });
+                        } else {
+                            // 计算当前滤镜在PS中的索引
+                            // 左侧index 0对应filterFX最高索引，PS的_index从1开始
+                            const filterZeroBased = Math.min(filterFX.length - 1 - index, filterFX.length - 1);
+                            if (filterZeroBased >= 0) {
+                                const filterIndex = filterZeroBased + 1; // 转为1-based
+                                console.log(`删除索引 ${index}，对应PS滤镜索引 ${filterIndex}，当前filterFX长度: ${filterFX.length}`);
+                                
+                                try {
+                                    await batchPlay([
+                                        {
+                                            _obj: "delete",
+                                            _target: [
+                                                {
+                                                    _ref: "filterFX",
+                                                    _index: filterIndex
+                                                }
+                                            ],
+                                            _options: { dialogOptions: "dontDisplay" }
+                                        }
+                                    ], { synchronousExecution: true });
+                                } catch (deleteError) {
+                                    console.warn(`删除滤镜 ${filterIndex} 失败:`, deleteError.message);
+                                    // 继续处理下一个
+                                }
+                            } else {
+                                console.warn(`跳过无效索引 ${index}，filterZeroBased: ${filterZeroBased}`);
+                            }
+                        }
+                    }
+                }, { "commandName": "删除智能滤镜" });
+
+                // 在PS操作完成后，统一更新UI状态（从后往前删除UI记录）
+                const newSteps = [...adjustmentSteps];
+                const newDisplayNames = { ...adjustmentSteps.reduce((acc, step) => {
+                    acc[step] = step.split(' (')[0];
+                    return acc;
+                }, {}) };
+
+                // 强制降序，确保按从后到前删除
+                const sortedIndicesToDelete = [...indicesToDelete].sort((a, b) => b - a);
+
+                // 从后往前删除，确保索引不会因前面的删除而失效
+                for (const index of sortedIndicesToDelete) {
+                    if (index >= 0 && index < newSteps.length) {
+                        // 基于原始数组长度计算显示序号
+                        const originalDisplayNumber = adjustmentSteps.length - index;
+                        console.log('删除记录步骤，索引:', index, '该数组索引对应的原序号:', originalDisplayNumber);
                         
-                        // 移动智能滤镜
+                        const deletedStep = newSteps[index];
+                        newSteps.splice(index, 1);
+                        if (deletedStep) {
+                            delete newDisplayNames[deletedStep];
+                        }
+                    }
+                }
+
+                // 批量更新状态
+                setAdjustmentSteps(newSteps, newDisplayNames);
+
+                // 等待一段时间后再恢复同步
+                setTimeout(() => {
+                    if (!isRecording && sampleLayerId) {
+                        syncInterval.current = setInterval(async () => {
+                            try {
+                                await syncWithSampleLayer();
+                            } catch (error) {
+                                console.error('同步失败:', error);
+                            }
+                        }, 500);
+                    }
+                }, 600);
+            }
+        } catch (error) {
+            console.error('删除调整失败:', error);
+            const { showAlert } = require("photoshop").core;
+            showAlert({ message: `删除调整失败: ${error.message}` });
+        } finally {
+            (deleteSelectedItems as any)._inProgress = false;
+        }
+    };
+
+    // 单个项目删除（保持向后兼容）
+    const deleteAdjustmentAndLayer = async (index) => {
+        setSelectedIndex(index);
+        setSelectedIndices(new Set());
+        await deleteSelectedItems();
+    };
+
+    // 添加 ref 来存储同步定时器
+    const syncInterval = useRef(null);
+
+    const applyDirectAdjustment = async (adjustmentItem) => {
+        try {
+            const timestamp = new Date().getTime();
+            const step = `${adjustmentItem.name} (${timestamp})`;
+            
+            if (isRecording) {
+                addAdjustmentStep(step, adjustmentItem.name, true);
+            } else {
+                // 非录制状态：根据选中位置插入新调整
+                if (selectedIndex !== null && sampleLayerId) {
+                    // 如果有选中项，需要将新调整插入到正确位置
+                    // 并且移动智能滤镜到对应位置
+                    await moveNewFilterToPosition(step, adjustmentItem.name, selectedIndex);
+                } else {
+                    addAdjustmentStep(step, adjustmentItem.name);
+                }
+            }
+        } catch (error) {
+            console.error('记录直接调整失败:', error);
+            const { showAlert } = require("photoshop").core;
+            showAlert({ message: `记录调整失败: ${error.message}` });
+        }
+    };
+
+    // 新增：将新创建的智能滤镜移动到指定位置
+    const moveNewFilterToPosition = async (step, displayName, targetIndex) => {
+        try {
+            const { executeAsModal, showAlert } = require("photoshop").core;
+            const { batchPlay } = require("photoshop").action;
+
+            if (!sampleLayerId) return;
+
+            await executeAsModal(async () => {
+                // 选中样本图层
+                await batchPlay([{
+                    _obj: "select",
+                    _target: [{ _ref: "layer", _id: sampleLayerId }],
+                    makeVisible: true,
+                    _options: { dialogOptions: "dontDisplay" }
+                }], { synchronousExecution: true });
+
+                // 获取当前智能滤镜数量
+                const result = await batchPlay([{
+                    _obj: "get",
+                    _target: [{ _ref: "layer", _id: sampleLayerId }],
+                    _options: { dialogOptions: "dontDisplay" }
+                }], { synchronousExecution: true });
+
+                const filterFX = result[0]?.smartObject?.filterFX || [];
+                const filterCount = filterFX.length;
+
+                if (filterCount > 0) {
+                    // 新滤镜默认在顶部（索引为filterCount），需要移动到targetIndex对应的位置
+                    const sourceIndex = filterCount; // 新滤镜在最顶部
+                    const targetFilterIndex = filterCount - targetIndex; // 转换为PS的索引
+
+                    if (sourceIndex !== targetFilterIndex) {
+                        // 移动智能滤镜到目标位置
                         await batchPlay([{
                             _obj: "move",
                             _target: [
                                 {
                                     _ref: "filterFX",
-                                    _index: sourceFilterIndex
+                                    _index: sourceIndex
                                 },
                                 {
                                     _ref: "layer",
@@ -354,239 +785,25 @@ export const useRecord = () => {
                             _isCommand: false
                         }], { synchronousExecution: true });
                     }
-                }, { "commandName": "移动智能滤镜" });
-            }
+                }
+            }, { "commandName": `移动新增滤镜到位置${targetIndex}` });
 
-            // 移动调整步骤
+            // 添加调整步骤到记录（插入到指定位置）
             const newSteps = [...adjustmentSteps];
+            newSteps.splice(targetIndex, 0, step);
             
-            // 处理多选拖拽
-            if (selectedIndices.size > 0) {
-                // 获取所有选中的项目
-                const selectedItems = Array.from(selectedIndices).sort((a, b) => a - b).map(index => ({
-                    index,
-                    step: newSteps[index]
-                }));
-                
-                // 从后往前删除选中的项目
-                for (let i = selectedItems.length - 1; i >= 0; i--) {
-                    newSteps.splice(selectedItems[i].index, 1);
-                }
-                
-                // 计算插入位置
-                let insertIndex = dropIndex;
-                // 调整插入位置（考虑已删除的项目）
-                for (const item of selectedItems) {
-                    if (item.index < dropIndex) {
-                        insertIndex--;
-                    }
-                }
-                
-                // 插入所有选中的项目
-                for (let i = 0; i < selectedItems.length; i++) {
-                    newSteps.splice(insertIndex + i, 0, selectedItems[i].step);
-                }
-                
-                // 更新状态
-                clearAllSteps();
-                newSteps.forEach((step, index) => {
-                    addAdjustmentStep(step, step.split(' (')[0], true);
-                });
-                
-                // 更新多选状态到新位置
-                const newSelectedIndices = new Set();
-                for (let i = 0; i < selectedItems.length; i++) {
-                    newSelectedIndices.add(insertIndex + i);
-                }
-                setSelectedIndices(newSelectedIndices);
-                setSelectedIndex(null);
-            } else {
-                // 单选拖拽
-                const draggedStep = newSteps[draggedIndex];
-                
-                // 删除原位置的项目
-                newSteps.splice(draggedIndex, 1);
-                
-                // 计算正确的插入位置
-                // 由于显示顺序是倒序的，拖拽逻辑需要特殊处理
-                let insertIndex;
-                if (draggedIndex < dropIndex) {
-                    // 从上往下拖（从小索引到大索引，在显示上是从大编号到小编号）
-                    // 删除后数组长度减1，所以插入位置是dropIndex - 1
-                    insertIndex = dropIndex - 1;
-                } else {
-                    // 从下往上拖（从大索引到小索引，在显示上是从小编号到大编号）
-                    // 插入位置就是dropIndex
-                    insertIndex = dropIndex;
-                }
-                
-                newSteps.splice(insertIndex, 0, draggedStep);
-                
-                // 更新状态
-                clearAllSteps();
-                newSteps.forEach((step, index) => {
-                    addAdjustmentStep(step, step.split(' (')[0], true);
-                });
-                
-                // 更新选中状态到新位置
-                if (selectedIndex === draggedIndex) {
-                    setSelectedIndex(insertIndex);
-                }
-            }
-            
+            const newDisplayNames = adjustmentSteps.reduce((acc, s) => {
+                acc[s] = s.split(' (')[0];
+                return acc;
+            }, {});
+            newDisplayNames[step] = displayName;
+
+            setAdjustmentSteps(newSteps, newDisplayNames);
+
         } catch (error) {
-            console.error('拖拽移动失败:', error);
-            const { showAlert } = require("photoshop").core;
-            showAlert({ message: `拖拽移动失败: ${error.message}` });
-        } finally {
-            setDraggedIndex(null);
-            setDragOverIndex(null);
-        }
-    };
-
-    // 删除选中的项目
-    const deleteSelectedItems = async () => {
-        if (isRecording || !app.activeDocument) return;
-
-        const { executeAsModal, showAlert } = require("photoshop").core;
-        const { batchPlay } = require("photoshop").action;
-
-        try {
-            if (sampleLayerId) {
-                // 获取要删除的索引列表
-                let indicesToDelete = [];
-                if (selectedIndices.size > 0) {
-                    indicesToDelete = Array.from(selectedIndices).sort((a, b) => b - a); // 从后往前删除
-                } else if (selectedIndex !== null) {
-                    indicesToDelete = [selectedIndex];
-                }
-
-                if (indicesToDelete.length === 0) return;
-
-                // 暂时禁用同步
-                const currentSyncInterval = syncInterval.current;
-                if (currentSyncInterval) {
-                    clearInterval(currentSyncInterval);
-                }
-
-                await executeAsModal(async () => {
-                    // 选中样本图层
-                    await batchPlay([{
-                        _obj: "select",
-                        _target: [{ _ref: "layer", _id: sampleLayerId }],
-                        makeVisible: true,
-                        _options: { dialogOptions: "dontDisplay" }
-                    }], { synchronousExecution: true });
-
-                    // 获取智能滤镜信息
-                    const result = await batchPlay([{
-                        _obj: "get",
-                        _target: [{ _ref: "layer", _id: sampleLayerId }],
-                        _options: { dialogOptions: "dontDisplay" }
-                    }], { synchronousExecution: true });
-
-                    const filterFX = result[0]?.smartObject?.filterFX || [];
-                    
-                    // 删除选中的滤镜（从后往前删除）
-                    for (const index of indicesToDelete) {
-                        if (adjustmentSteps.length === 1) {
-                            // 删除所有滤镜
-                            await batchPlay([{
-                                _obj: "delete",
-                                _target: [
-                                    { _ref: "filterFX" },
-                                    {
-                                        _ref: "layer",
-                                        _enum: "ordinal",
-                                        _value: "targetEnum"
-                                    }
-                                ],
-                                _options: { dialogOptions: "dontDisplay" }
-                            }], { synchronousExecution: true });
-                        } else {
-                            const filterIndex = filterFX.length - index;
-                            if (filterIndex >= 1 && filterIndex <= filterFX.length) {
-                                await batchPlay([{
-                                    _obj: "delete",
-                                    _target: [{
-                                        _ref: "filterFX",
-                                        _index: filterIndex
-                                    }],
-                                    _options: { dialogOptions: "dontDisplay" }
-                                }], { synchronousExecution: true });
-                            }
-                        }
-                        
-                        // 更新步骤记录
-                        deleteAdjustmentStep(index);
-                    }
-                }, { "commandName": "删除智能滤镜" });
-
-                // 清空选中状态
-                setSelectedIndex(null);
-                setSelectedIndices(new Set());
-                setLastClickedIndex(null);
-
-                // 等待一段时间后再恢复同步
-                setTimeout(() => {
-                    if (!isRecording && sampleLayerId) {
-                        syncInterval.current = setInterval(async () => {
-                            try {
-                                await syncWithSampleLayer();
-                            } catch (error) {
-                                console.error('同步失败:', error);
-                            }
-                        }, 500);
-                    }
-                }, 1000);
-            }
-        } catch (error) {
-            console.error('删除调整失败:', error);
-            showAlert({ message: `删除调整失败: ${error.message}` });
-        }
-    };
-
-    // 单个项目删除（保持向后兼容）
-    const deleteAdjustmentAndLayer = async (index) => {
-        setSelectedIndex(index);
-        setSelectedIndices(new Set());
-        await deleteSelectedItems();
-    };
-
-    // 添加 ref 来存储同步定时器
-    const syncInterval = useRef(null);
-
-    useEffect(() => {
-        if (!isRecording && sampleLayerId) {
-            const syncInterval = setInterval(async () => {
-                try {
-                    await syncWithSampleLayer();
-                } catch (error) {
-                    console.error('同步失败:', error);
-                    if (error.message?.includes('not found')) {
-                        clearAllSteps();
-                        setSampleLayerId(null);
-                    }
-                }
-            }, 500);
-            return () => clearInterval(syncInterval);
-        } 
-    }, [isRecording, sampleLayerId]);
-
-    const applyDirectAdjustment = async (adjustmentItem) => {
-        try {
-            const timestamp = new Date().getTime();
-            const step = `${adjustmentItem.name} (${timestamp})`;
-            
-            if (isRecording) {
-                addAdjustmentStep(step, adjustmentItem.name, true);
-            } else {
-                addAdjustmentStep(step, adjustmentItem.name);
-            }
-        } catch (error) {
-            console.error('记录直接调整失败:', error);
-            const { showAlert } = require("photoshop").core;
-            showAlert({ message: `记录调整失败: ${error.message}` });
+            console.error('移动新滤镜失败:', error);
+            // 如果移动失败，回退到默认添加方式
+            addAdjustmentStep(step, displayName);
         }
     };
 
@@ -769,22 +986,18 @@ export const useRecord = () => {
         handleDrop,
         deleteSelectedItems,
         draggedIndex,
-        dragOverIndex
+        dragOverIndex,
+        getItemClass: (index) => {
+            const classes = ['record-item'];
+            if (dropTargetIndex === index && dropPosition === 'above') {
+                classes.push('drop-line-above');
+            }
+            if (dropTargetIndex === adjustmentSteps.length - 1 && dropPosition === 'below' && index === adjustmentSteps.length - 1) {
+                classes.push('drop-line-below');
+            }
+            return classes.join(' ');
+        },
+        dropTargetIndex,
+        dropPosition
     };
 };
-
-export const AdjustmentMenu = React.memo(() => {
-    const { isRecording } = useRecordContext();
-    const {
-        applyAdjustment,
-        applyDirectAdjustment
-    } = useRecord();
-
-    return (
-        <AdjustmentMenuComponent
-            isRecording={isRecording}
-            onAdjustmentClick={applyAdjustment}
-            onDirectAdjustment={applyDirectAdjustment}
-        />
-    );
-});

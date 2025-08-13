@@ -8,7 +8,8 @@ export const AdjustmentStepsContext = createContext({
     addAdjustmentStep: (step: string, displayName?: string, addToStart?: boolean) => {},
     deleteAdjustmentStep: (index: number) => {},
     clearAllSteps: () => {},
-    setSelectedIndex: (index: number) => {} // 添加这一行
+    setSelectedIndex: (index: number) => {}, // 添加这一行
+    setAdjustmentSteps: (steps: string[], displayNames?: object) => {} // 新增批量更新API
 });
 
 // 创建提供者组件
@@ -52,7 +53,8 @@ export const AdjustmentStepsProvider = ({ children }) => {
 
     // 删除步骤
     const deleteAdjustmentStep = (index: number) => {
-        console.log('删除步骤，索引:', index);
+        console.log('删除记录步骤，索引:', index, '该数组索引对应的原序号:', adjustmentSteps.length - index);
+
         setAdjustmentSteps(prevSteps => {
             const newSteps = [...prevSteps];
             const deletedStep = newSteps[index];
@@ -84,6 +86,14 @@ export const AdjustmentStepsProvider = ({ children }) => {
         setDisplayNames({});
     };
 
+    // 批量设置步骤 - 高性能API
+    const batchSetSteps = (newSteps, newDisplayNames = {}) => {
+        setAdjustmentSteps(newSteps);
+        if (newDisplayNames && Object.keys(newDisplayNames).length > 0) {
+            setDisplayNames(newDisplayNames);
+        }
+    };
+
     return (
         <AdjustmentStepsContext.Provider 
             value={{ 
@@ -93,7 +103,8 @@ export const AdjustmentStepsProvider = ({ children }) => {
                 addAdjustmentStep, 
                 deleteAdjustmentStep,
                 clearAllSteps,
-                setSelectedIndex // 添加这一行
+                setSelectedIndex, // 添加这一行
+                setAdjustmentSteps: batchSetSteps // 新增批量更新API
             }}
         >
             {children}

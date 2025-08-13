@@ -93,7 +93,7 @@ html,body {
 .operation-list {
   overflow-y: auto;
   flex: 1;
-  padding-top: 20px; /* 为拖拽到最顶部提供空间 */
+  padding-top: 10px; /* 为拖拽到最顶部提供空间 */
 }
 
 /* 记录列表列表项样式 */
@@ -161,12 +161,7 @@ html,body {
     z-index: 1000;
 }
 
-.operation-list li.drag-over {
-    background-color: rgba(38, 128, 235, 0.2);
-    border-top: 2px solid rgba(38, 128, 235, 0.8);
-    transform: translateY(-2px);
-    transition: all 0.2s ease;
-}
+/* drag-over 样式已移除，避免与 drop-line 冲突 */
 
 /* 多选状态样式增强 */
 .operation-list li.selected:not(:hover) {
@@ -354,4 +349,32 @@ html,body {
   text-align: right;
   position: relative;  
   bottom: 2px;   
+}
+
+/* PS风格的拖放边界线 */
+.operation-list li.drop-line-above {
+  position: relative;
+}
+.operation-list li.drop-line-above::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 2px;
+  background-color: var(--accent, #2680EB);
+}
+
+/* 列表最后一项的下边界（仅在拖到最底部时显示） */
+.operation-list li.drop-line-below {
+  position: relative;
+}
+.operation-list li.drop-line-below::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background-color: var(--accent, #2680EB);
 }

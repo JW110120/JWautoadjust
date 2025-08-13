@@ -1,7 +1,7 @@
 import React, { useContext, useState, useRef, useEffect  } from 'react';
 import { app } from 'photoshop';
 import { AdjustmentStepsContext } from './contexts/AdjustmentStepsContext';
-import { useRecord, AdjustmentMenu } from './RecordArea';
+import { useRecord } from './RecordArea';
 import FileArea from './FileArea';
 import InfoPlane from './components/InfoPlane';
 import { DeleteButton } from './components/DeleteButton';
@@ -18,7 +18,6 @@ const MainContainer: React.FC = () => {
 const MainContainerContent: React.FC = () => {
     const { LayerTreeComponent, applyAdjustments, progress, isProcessing } = FileArea();
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
-    const [selectedStepIndex, setSelectedStepIndex] = useState(-1);
     const { 
         isRecording, 
         startRecording, 
@@ -27,6 +26,7 @@ const MainContainerContent: React.FC = () => {
         applyAdjustment,
         applyDirectAdjustment,
         selectedIndices,
+        selectedIndex,
         handleItemSelect,
         handleBlankAreaClick,
         handleDragStart,
@@ -35,7 +35,8 @@ const MainContainerContent: React.FC = () => {
         handleDrop,
         deleteSelectedItems,
         draggedIndex,
-        dragOverIndex
+        dragOverIndex,
+        getItemClass // 新增导入
     } = useRecord();
 
     const handleRecordClick = async () => {
@@ -55,16 +56,7 @@ const MainContainerContent: React.FC = () => {
     const handleDeleteStep = async (index) => {
         if (!isRecording && index >= 0) {
             try {
-                const newLength = adjustmentSteps.length - 1;
-                const newIndex = index === adjustmentSteps.length - 1 ? newLength - 1 : index;
-                
                 await deleteAdjustmentAndLayer(index);
-                
-                if (newLength > 0) {
-                    setSelectedStepIndex(newIndex);
-                } else {
-                    setSelectedStepIndex(-1);
-                }
             } catch (error) {
                 console.error('删除步骤失败:', error);
                 const { showAlert } = require("photoshop").core;
@@ -74,7 +66,8 @@ const MainContainerContent: React.FC = () => {
     };
 
     const handleStepClick = (index) => {
-        setSelectedStepIndex(index);
+        // 立即响应点击，无额外逻辑，提升响应速度
+        handleItemSelect(index, null);
     };
 
     const handleStepDoubleClick = async (index) => {
@@ -105,18 +98,18 @@ const MainContainerContent: React.FC = () => {
                         }], { synchronousExecution: true });
     
                         const filterFX = result[0]?.smartObject?.filterFX || [];
-                        let filterIndex = filterFX.length - index;  // 改为 let 声明
+                        let filterIndex = filterFX.length - 1 - index;  // 修正索引换算
                           
-                        if (filterIndex < 1) filterIndex = 1;
-                        if (filterIndex >= filterFX.length) filterIndex = filterFX.length;
+                        if (filterIndex < 0) filterIndex = 0;
+                        if (filterIndex >= filterFX.length) filterIndex = filterFX.length - 1;
     
-                        if (filterIndex >= 1 && filterIndex <= filterFX.length) {
+                        if (filterIndex >= 0 && filterIndex < filterFX.length) {
                             await batchPlay([{
                                 _obj: "set",
                                 _target: [
                                     {
                                         _ref: "filterFX",
-                                        _index: filterIndex
+                                        _index: filterIndex + 1  // PS的filterFX索引从1开始
                                     },
                                     {
                                         _ref: "layer",
@@ -127,7 +120,7 @@ const MainContainerContent: React.FC = () => {
                                 filterFX: {
                                     _obj: "filterFX",
                                     filter: {
-                                        _obj: filterFX[filterIndex-1].filter._obj,
+                                        _obj: filterFX[filterIndex].filter._obj,
                                         presetKind: {
                                             _enum: "presetKindType",
                                             _value: "presetKindCustom"
@@ -177,19 +170,18 @@ const MainContainerContent: React.FC = () => {
                         }], { synchronousExecution: true });
     
                         const filterFX = result[0]?.smartObject?.filterFX || [];
-                        
-                        let filterIndex = filterFX.length - index;
-                        
-                        if (filterIndex < 1) filterIndex = 1;
-                        if (filterIndex >= filterFX.length) filterIndex = filterFX.length;
+                        let filterIndex = filterFX.length - 1 - index;
+                          
+                        if (filterIndex < 0) filterIndex = 0;
+                        if (filterIndex >= filterFX.length) filterIndex = filterFX.length - 1;
     
-                        if (filterIndex >= 1 && filterIndex <= filterFX.length) {
+                        if (filterIndex >= 0 && filterIndex < filterFX.length) {
                             await batchPlay([{
                                 _obj: "set",
                                 _target: [
                                     {
                                         _ref: "filterFX",
-                                        _index: filterIndex
+                                        _index: filterIndex + 1
                                     },
                                     {
                                         _ref: "layer",
@@ -238,23 +230,19 @@ const MainContainerContent: React.FC = () => {
                     <ul className="operation-list"
                         onDragOver={(e) => {
                             e.preventDefault();
-                            // 检查是否拖拽到列表顶部空白区域
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            const y = e.clientY - rect.top;
-                            if (y < 20) { // 顶部20px区域
-                                handleDragOver(e, 0);
-                            }
                         }}
                         onDrop={async (e) => {
-                            // 检查是否拖拽到列表顶部空白区域
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            const y = e.clientY - rect.top;
-                            if (y < 20) { // 顶部20px区域
-                                await handleDrop(e, 0);
+                            // 交由具体项处理，不在容器层做顶部空白逻辑
+                        }}
+                        onClick={(e) => {
+                            // 如果点击的是空白区域（不是列表项），取消选中
+                            if (e.target === e.currentTarget) {
+                                handleBlankAreaClick();
                             }
-                        }}>
+                        }}
+                    >
                         {adjustmentSteps.map((step, index) => {
-                            const isSelected = selectedIndices.size > 0 ? selectedIndices.has(index) : index === selectedStepIndex;
+                            const isSelected = selectedIndices.size > 0 ? selectedIndices.has(index) : index === selectedIndex;
                             const isDraggedOver = dragOverIndex === index;
                             const isDragged = draggedIndex === index;
                             
@@ -263,28 +251,31 @@ const MainContainerContent: React.FC = () => {
                                 key={index}
                                 draggable={true}
                                 onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                     if (e.ctrlKey || e.metaKey || e.shiftKey) {
                                         handleItemSelect(index, e);
                                     } else {
                                         handleStepClick(index);
                                     }
                                 }}
-                                onDoubleClick={() => handleStepDoubleClick(index)}
+                                onDoubleClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleStepDoubleClick(index);
+                                }}
                                 onDragStart={(e) => handleDragStart(e, index)}
                                 onDragOver={(e) => handleDragOver(e, index)}
                                 onDragLeave={handleDragLeave}
+                                onDragEnd={() => handleDragLeave()}
                                 onDrop={async (e) => await handleDrop(e, index)}
                                 className={`${
                                     isSelected ? 'selected' : ''
                                 } ${
-                                    isDraggedOver ? 'drag-over' : ''
-                                } ${
                                     isDragged ? 'dragging' : ''
-                                }`}
+                                } ${getItemClass(index)}`}
                                 style={{
-                                    opacity: isDragged ? 0.5 : 1,
-                                    transform: isDraggedOver ? 'translateY(-2px)' : 'none',
-                                    transition: 'all 0.2s ease'
+                                    opacity: isDragged ? 0.5 : 1
                                 }}
                             >
 
@@ -324,21 +315,20 @@ const MainContainerContent: React.FC = () => {
                     isRecording={isRecording}
                     onRecordClick={handleRecordClick}
                 />
-                <AdjustmentMenu 
-                    onAdjustmentClick={applyAdjustment}
-                    onDirectAdjustment={applyDirectAdjustment}
-                />
                 <DeleteButton 
                     isRecording={isRecording}
-                    hasSteps={adjustmentSteps.length > 0 && (selectedStepIndex >= 0 || selectedIndices.size > 0)}
-                    onDelete={() => {
+                    hasSteps={adjustmentSteps.length > 0 && (selectedIndex >= 0 || selectedIndices.size > 0)}
+                    onDelete={async () => {
+                        if (selectedIndices.size === 0 && (selectedIndex === null || selectedIndex < 0)) {
+                            return;
+                        }
                         if (selectedIndices.size > 0) {
-                            deleteSelectedItems();
-                        } else {
-                            handleDeleteStep(selectedStepIndex);
+                            await deleteSelectedItems();
+                        } else if (selectedIndex >= 0 && selectedIndex < adjustmentSteps.length) {
+                            await handleDeleteStep(selectedIndex);
                         }
                     }}
-                    index={selectedStepIndex}
+                    index={selectedIndex ?? -1}
                 />
             </div>
             </div>
