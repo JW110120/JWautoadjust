@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { app } from 'photoshop';
-import { useRecord } from '../RecordArea';
 import { getButtonStyle, handleMouseOver, handleMouseOut } from '../styles/buttonStyles';
 
 interface RecordButtonProps {

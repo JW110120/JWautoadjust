@@ -14,14 +14,15 @@ export const useRecord = () => {
         clearAllSteps,
         selectedIndex,
         setSelectedIndex,
-        setAdjustmentSteps
+        setAdjustmentSteps,
+        displayNames
     } = useAdjustmentSteps();
     
     // 多选状态管理
     const [selectedIndices, setSelectedIndices] = useState(new Set());
     const [lastClickedIndex, setLastClickedIndex] = useState(null);
     const [draggedIndex, setDraggedIndex] = useState(null);
-    const [dragOverIndex, setDragOverIndex] = useState(null); 
+    const [dragOverIndex, setDragOverIndex] = useState(null);
     
     // PS风格拖拽状态
     const [dropTargetIndex, setDropTargetIndex] = useState(null); // 拖拽到哪个位置
@@ -35,7 +36,12 @@ export const useRecord = () => {
     const dragTimeoutRef = useRef(null);
     const syncTimeoutRef = useRef(null);
     
-    // 清理所有拖拽状态的通用函数
+    // 列表容器引用与全局拖拽守护
+    const containerRef = useRef<HTMLUListElement | null>(null);
+    const lastHoverTsRef = useRef<number>(0);
+    const hoverWatchdogRef = useRef<any>(null);
+    
+    // 清理所有拖拽状态的通用函数（完整清理，包含拖拽源）
     const clearAllDragStates = () => {
         setDraggedIndex(null);
         setDragOverIndex(null);
@@ -43,6 +49,19 @@ export const useRecord = () => {
         setDropPosition(null);
         
         // 清理拖拽计时器
+        if (dragTimeoutRef.current) {
+            clearTimeout(dragTimeoutRef.current);
+            dragTimeoutRef.current = null;
+        }
+        // 重置上一次的落点记录，避免蓝线残留
+        lastDropRef.current = null;
+    };
+
+    // 仅清理悬停与高亮（不清理拖拽源），用于 onDragLeave 降低抖动
+    const clearHoverStates = () => {
+        setDragOverIndex(null);
+        setDropTargetIndex(null);
+        setDropPosition(null);
         if (dragTimeoutRef.current) {
             clearTimeout(dragTimeoutRef.current);
             dragTimeoutRef.current = null;
@@ -126,25 +145,30 @@ export const useRecord = () => {
             setIsRecording(true);
             isRecordingRef.current = true;
             
-            // 提取命令列表
-            const commands = adjustmentMenuItems.map(item => item.command);
+            // 监听常见会影响智能滤镜列表的事件，去除对已删除的 adjustmentMenuItems 的依赖
+            const events = ["make", "set", "move", "delete", "transform"];
 
-            // 添加调整以及滤镜的监听器
+            // 添加调整以及滤镜的监听器：在事件触发后同步智能滤镜，避免依赖 eventToNameMap
             const adjustmentListener = await addNotificationListener(
-                commands, // 使用提取的命令列表
-                function(event, descriptor) {
+                events,
+                async function(event, descriptor) {
                     if (!isRecordingRef.current) return;
-                    
-                    let stepName = eventToNameMap[event] || 
-                                 (descriptor?._obj && eventToNameMap[descriptor._obj]);
-                    
-                    if (stepName) {
-                        const timestamp = new Date().getTime();
-                        const stepType = `${stepName} (${timestamp})`;
-                        
-                        // 直接添加到数组开头
-                        addAdjustmentStep(stepType, stepName, true);
+                    if (!sampleLayerId) return;
+
+                    // 使用轻量防抖，避免高频事件造成过度同步
+                    if (syncTimeoutRef.current) {
+                        clearTimeout(syncTimeoutRef.current);
+                        syncTimeoutRef.current = null;
                     }
+                    syncTimeoutRef.current = setTimeout(async () => {
+                        try {
+                            await syncAdjustmentLayers(sampleLayerId);
+                        } catch (err) {
+                            console.error('监听同步失败:', err);
+                        } finally {
+                            syncTimeoutRef.current = null;
+                        }
+                    }, 120);
                 }
             );
     
@@ -281,148 +305,283 @@ export const useRecord = () => {
         setDraggedIndex(index);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/html', e.target.outerHTML);
+        // 开始拖拽时清空上一次的落点缓存，确保蓝线全程跟随最新位置
+        lastDropRef.current = null;
     };
 
-    // 拖拽悬停 - 简化逻辑以避免抖动和状态不一致
-    const handleDragOver = (e, index) => {
-        e.preventDefault();
-        
-        if (draggedIndex === null) return;
-        
-        // 清理之前的计时器
-        if (dragTimeoutRef.current) clearTimeout(dragTimeoutRef.current);
-        
-        const target = e.currentTarget;
-        const rect = target.getBoundingClientRect();
-        const y = e.clientY - rect.top;
-        const isUpperHalf = y < rect.height / 2;
-        
-        // 清理旧状态，设置新状态
-        setDragOverIndex(index);
-        
-        // 决定显示哪个位置的拖拽线
-        if (isUpperHalf) {
-            // 鼠标在上半部分：显示当前项的上边线
-            setDropTargetIndex(index);
-            setDropPosition('above');
-        } else {
-            // 鼠标在下半部分：显示下一项的上边线
-            // 除非是最后一项，则显示当前项的下边线
-            if (index === adjustmentSteps.length - 1) {
-                setDropTargetIndex(index);
-                setDropPosition('below');
-            } else {
-                setDropTargetIndex(index + 1);
-                setDropPosition('above');
+    // 拖拽悬停 - PS风格：靠近哪个上边缘，就高亮哪个
+    const hoverRAF = useRef<number | null>(null);
+    const hoverPending = useRef<any>(null);
+    const lastDropRef = useRef<{ idx: number | null; pos: 'above' | 'below' | null } | null>(null);
+
+    const flushHover = () => {
+        const task = hoverPending.current;
+        hoverPending.current = null;
+        hoverRAF.current = null;
+        if (!task) return;
+
+        if (task.kind === 'li') {
+            const { index, y, h, isLast } = task;
+            setDragOverIndex(index);
+            if (isLast) {
+                const distTop = y;
+                const distBottom = h - y;
+                const next = distTop <= distBottom
+                    ? { idx: index, pos: 'above' as const }
+                    : { idx: index, pos: 'below' as const };
+                const prev = lastDropRef.current;
+                if (!prev || prev.idx !== next.idx || prev.pos !== next.pos) {
+                    setDropTargetIndex(next.idx);
+                    setDropPosition(next.pos);
+                    lastDropRef.current = next;
+                }
+                return;
+            }
+            const distToCurrentTop = y;
+            const distToNextTop = h - y;
+            const next = distToCurrentTop <= distToNextTop
+                ? { idx: index, pos: 'above' as const }
+                : { idx: index + 1, pos: 'above' as const };
+            const prev = lastDropRef.current;
+            if (!prev || prev.idx !== next.idx || prev.pos !== next.pos) {
+                setDropTargetIndex(next.idx);
+                setDropPosition(next.pos);
+                lastDropRef.current = next;
+            }
+        } else if (task.kind === 'container') {
+            const { edges, y } = task;
+            const n = edges.length - 1;
+            let nearest = 0;
+            let minDist = Math.abs(y - edges[0]);
+            for (let i = 1; i <= n; i++) {
+                const d = Math.abs(y - edges[i]);
+                if (d < minDist) { minDist = d; nearest = i; }
+            }
+            const next = nearest === n
+                ? { idx: n - 1, pos: 'below' as const }
+                : { idx: nearest, pos: 'above' as const };
+            const prev = lastDropRef.current;
+            if (!prev || prev.idx !== next.idx || prev.pos !== next.pos) {
+                setDropTargetIndex(next.idx);
+                setDropPosition(next.pos);
+                lastDropRef.current = next;
             }
         }
+    };
+
+    const scheduleHover = () => {
+        // 改为立即刷新，确保毫无延迟的高亮反馈
+        if (hoverRAF.current != null) {
+            try { cancelAnimationFrame(hoverRAF.current as any); } catch {}
+            hoverRAF.current = null;
+        }
+        flushHover();
+    };
+
+    // li 项目的拖拽悬停
+    const handleDragOver = (e, index) => {
+        e.preventDefault();
+        if (draggedIndex === null) return;
+
+        // 进入新 li 时，取消任何待执行的清理定时器，保证高亮即时更新
+        if (dragTimeoutRef.current) {
+            clearTimeout(dragTimeoutRef.current);
+            dragTimeoutRef.current = null;
+        }
+
+        const target = e.currentTarget as HTMLElement;
+        const rect = target.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+
+        hoverPending.current = { kind: 'li', index, y, h: rect.height, isLast: index === adjustmentSteps.length - 1 };
+        scheduleHover();
+    };
+
+    // 容器层的拖拽悬停：用于处理顶部空白区域，将插入位置固定为最上方
+    const handleContainerDragOver = (e) => {
+        e.preventDefault();
+        if (draggedIndex === null) return;
+
+        if (dragTimeoutRef.current) {
+            clearTimeout(dragTimeoutRef.current);
+            dragTimeoutRef.current = null;
+        }
+
+        const ul = e.currentTarget as HTMLElement;
+        const rect = ul.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const items = Array.from(ul.querySelectorAll('li')) as HTMLElement[];
+
+        if (items.length === 0) {
+            const next = { idx: 0, pos: 'above' as const };
+            const prev = lastDropRef.current;
+            if (!prev || prev.idx !== next.idx || prev.pos !== next.pos) {
+                setDropTargetIndex(next.idx);
+                setDropPosition(next.pos);
+                lastDropRef.current = next;
+            }
+            return;
+        }
+
+        const n = items.length;
+        const edges: number[] = new Array(n + 1);
+        edges[0] = items[0].getBoundingClientRect().top - rect.top;
+        for (let i = 1; i < n; i++) {
+            edges[i] = items[i].getBoundingClientRect().top - rect.top;
+        }
+        edges[n] = items[n - 1].getBoundingClientRect().bottom - rect.top;
+
+        hoverPending.current = { kind: 'container', edges, y };
+        scheduleHover();
     };
 
     // 拖拽离开
     const handleDragLeave = () => {
+        // 立刻清理悬停与高亮，避免延迟导致的残留高亮
+        if (dragTimeoutRef.current) clearTimeout(dragTimeoutRef.current);
+        setDragOverIndex(null);
+        setDropTargetIndex(null);
+        setDropPosition(null);
+        lastDropRef.current = null;
+    };
+
+    // 结束拖拽（来自 onDragEnd），做彻底清理
+    const handleDragEnd = () => {
         if (dragTimeoutRef.current) clearTimeout(dragTimeoutRef.current);
         clearAllDragStates();
     };
 
-    // 拖拽放下
-    const handleDrop = async (e, dropIndex) => {
-        e.preventDefault();
-        if (dragTimeoutRef.current) clearTimeout(dragTimeoutRef.current);
-        
-        if (draggedIndex === null) {
-            clearAllDragStates();
-            return;
-        }
+    // 全局 dragover 监听 + 看门狗，确保蓝线不再卡住且始终跟随鼠标
+    useEffect(() => {
+        if (draggedIndex === null) return;
 
-        // 依据PS逻辑：仅有上边界高亮表示插入到该项上方；
-        // 只有拖到所有项的最下方时，插入到最后。
-        let actualDropIndex;
-        if (dropTargetIndex === null || dropPosition === null) {
-            actualDropIndex = dropIndex;
-        } else {
-            actualDropIndex = dropPosition === 'above' ? dropTargetIndex : dropTargetIndex + 1;
-        }
-        
-        try {
-            const { executeAsModal, showAlert } = require("photoshop").core;
-            const { batchPlay } = require("photoshop").action;
-            
-            // 如果有样本图层，同步移动智能滤镜
-            if (sampleLayerId) {
-                await executeAsModal(async () => {
-                    // 选中样本图层
-                    await batchPlay([{
-                        _obj: "select",
-                        _target: [{ _ref: "layer", _id: sampleLayerId }],
-                        makeVisible: true,
-                        _options: { dialogOptions: "dontDisplay" }
-                    }], { synchronousExecution: true });
+        const onWindowDragOver = (e: DragEvent) => {
+            lastHoverTsRef.current = Date.now();
+            const ul = containerRef.current as HTMLElement | null;
+            if (!ul) return;
 
-                    // 获取智能滤镜信息
-                    const result = await batchPlay([{
-                        _obj: "get",
-                        _target: [{ _ref: "layer", _id: sampleLayerId }],
-                        _options: { dialogOptions: "dontDisplay" }
-                    }], { synchronousExecution: true });
+            const rect = ul.getBoundingClientRect();
+            const x = e.clientX;
+            const y = e.clientY;
 
-                    const filterFX = result[0]?.smartObject?.filterFX || [];
-                    
-                    if (filterFX.length > 0) {
-                        // 左侧 index 0 是顶部（最新），PS 的 filterFX 索引 1 表示最底部
-                        // 先将 UI 索引转换为 PS 的 1-based 索引
-                        const sourceZero = filterFX.length - 1 - draggedIndex; // 0-based，自底向上
-                        const targetZero = actualDropIndex === 0 ? filterFX.length : (filterFX.length - 1 - actualDropIndex); // mixed，后续再调整
-
-                        const sourceIndex = sourceZero + 1; // 1-based
-                        // 目标位置：在PS中 move to 的含义是“插入到该索引之前”，因此当拖到UI顶部(actualDropIndex=0)时，应 to 到 index=filterFX.length（也就是最顶部之前，相当于到最上方）
-                        const targetIndex = actualDropIndex === 0 ? filterFX.length : (targetZero + 1);
-
-                        if (sourceIndex !== targetIndex) {
-                            await batchPlay([
-                                {
-                                    _obj: "move",
-                                    _target: [
-                                        {
-                                            _ref: "filterFX",
-                                            _index: sourceIndex
-                                        },
-                                        {
-                                            _ref: "layer",
-                                            _enum: "ordinal",
-                                            _value: "targetEnum"
-                                        }
-                                    ],
-                                    to: {
-                                        _ref: [
-                                            {
-                                                _ref: "filterFX",
-                                                _index: targetIndex
-                                            },
-                                            {
-                                                _ref: "layer",
-                                                _enum: "ordinal",
-                                                _value: "targetEnum"
-                                            }
-                                        ]
-                                    },
-                                    _isCommand: false
-                                }
-                            ], { synchronousExecution: true });
-                        }
-                    }
-                }, { "commandName": "移动智能滤镜" });
+            // 不在容器区域内，立刻清理高亮
+            if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                clearHoverStates();
+                lastDropRef.current = null;
+                return;
             }
 
-            // 移动调整步骤
-            // 移动调整步骤
-            const newSteps = [...adjustmentSteps];
-            const { displayNames } = adjustmentSteps.reduce((acc, step) => {
-                const displayName = step.split(' (')[0];
-                acc.displayNames[step] = displayName;
-                return acc;
-            }, { displayNames: {} });
-            
-            // 处理多选拖拽
+            // 在容器内：根据鼠标位置计算最近的边界
+            const items = Array.from(ul.querySelectorAll('li')) as HTMLElement[];
+            if (items.length === 0) {
+                const next = { idx: 0, pos: 'above' as const };
+                const prev = lastDropRef.current;
+                if (!prev || prev.idx !== next.idx || prev.pos !== next.pos) {
+                    setDropTargetIndex(next.idx);
+                    setDropPosition(next.pos);
+                    lastDropRef.current = next;
+                }
+                return;
+            }
+
+            const n = items.length;
+            const edges: number[] = new Array(n + 1);
+            edges[0] = items[0].getBoundingClientRect().top - rect.top;
+            for (let i = 1; i < n; i++) {
+                edges[i] = items[i].getBoundingClientRect().top - rect.top;
+            }
+            edges[n] = items[n - 1].getBoundingClientRect().bottom - rect.top;
+
+            const localY = y - rect.top;
+            // 寻找最近边界
+            let nearest = 0;
+            let minDist = Math.abs(localY - edges[0]);
+            for (let i = 1; i <= n; i++) {
+                const d = Math.abs(localY - edges[i]);
+                if (d < minDist) { minDist = d; nearest = i; }
+            }
+            const next = nearest === n
+                ? { idx: n - 1, pos: 'below' as const }
+                : { idx: nearest, pos: 'above' as const };
+            const prev = lastDropRef.current;
+            if (!prev || prev.idx !== next.idx || prev.pos !== next.pos) {
+                setDropTargetIndex(next.idx);
+                setDropPosition(next.pos);
+                lastDropRef.current = next;
+            }
+        };
+
+        const onWindowDropOrEnd = () => {
+            clearAllDragStates();
+        };
+
+        window.addEventListener('dragover', onWindowDragOver as any, { passive: true } as any);
+        window.addEventListener('drop', onWindowDropOrEnd as any);
+        window.addEventListener('dragend', onWindowDropOrEnd as any);
+
+        // 启动看门狗：若一段时间没有 dragover 刷新，则清理高亮，避免卡住
+        if (hoverWatchdogRef.current) clearInterval(hoverWatchdogRef.current);
+        hoverWatchdogRef.current = setInterval(() => {
+            if (draggedIndex === null) return;
+            const now = Date.now();
+            if (now - lastHoverTsRef.current > 220) {
+                clearHoverStates();
+                lastDropRef.current = null;
+            }
+        }, 120);
+
+        return () => {
+            window.removeEventListener('dragover', onWindowDragOver as any);
+            window.removeEventListener('drop', onWindowDropOrEnd as any);
+            window.removeEventListener('dragend', onWindowDropOrEnd as any);
+            if (hoverWatchdogRef.current) clearInterval(hoverWatchdogRef.current);
+            hoverWatchdogRef.current = null;
+        };
+    }, [draggedIndex]);
+            const handleDrop = async (e, index) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // 拖拽源已无效则直接清理退出
+                if (draggedIndex === null) {
+                    clearAllDragStates();
+                    return;
+                }
+
+                // 计算实际插入索引，优先使用悬停状态，其次用事件坐标兜底，最后用传入索引兜底
+                let actualDropIndex: number;
+                const ul = containerRef.current as HTMLElement | null;
+                if (dropTargetIndex !== null && dropPosition !== null) {
+                    actualDropIndex = dropPosition === 'below' ? (dropTargetIndex + 1) : dropTargetIndex;
+                } else if (ul) {
+                    const rect = ul.getBoundingClientRect();
+                    const items = Array.from(ul.querySelectorAll('li')) as HTMLElement[];
+                    if (items.length === 0) {
+                        actualDropIndex = 0;
+                    } else {
+                        const edges: number[] = new Array(items.length + 1);
+                        edges[0] = items[0].getBoundingClientRect().top - rect.top;
+                        for (let i = 1; i < items.length; i++) {
+                            edges[i] = items[i].getBoundingClientRect().top - rect.top;
+                        }
+                        edges[items.length] = items[items.length - 1].getBoundingClientRect().bottom - rect.top;
+                        const localY = e.clientY - rect.top;
+                        let nearest = 0; let minDist = Math.abs(localY - edges[0]);
+                        for (let i = 1; i <= items.length; i++) {
+                            const d = Math.abs(localY - edges[i]);
+                            if (d < minDist) { minDist = d; nearest = i; }
+                        }
+                        actualDropIndex = nearest; // nearest==n 表示插到最后一个之后
+                    }
+                } else {
+                    actualDropIndex = typeof index === 'number' ? index : 0;
+                }
+
+                // 基于当前 UI 步骤进行操作，并透传现有显示名映射
+                const newSteps = [...adjustmentSteps];
+                const currentDisplayNames = displayNames;
+
+                try {
             if (selectedIndices.size > 0) {
                 // 获取所有选中的项目（按原始顺序）
                 const selectedItems = Array.from(selectedIndices).sort((a, b) => a - b).map(index => ({
@@ -430,58 +589,148 @@ export const useRecord = () => {
                     step: newSteps[index]
                 }));
 
-                // ====== UI 数据结构更新 ======
-                // 1. 提取选中的记录
-                const selectedSteps = selectedItems.map(item => item.step);
+                // 多选块边界归一化：如果落点在选中块内部，归一化到边界
+                const selStart = selectedItems[0].index;
+                const selEnd = selectedItems[selectedItems.length - 1].index;
                 
-                // 2. 从原数组中移除选中的记录（从后往前删除，避免索引错乱）
+                if (actualDropIndex > selStart && actualDropIndex <= selEnd) {
+                    // 落点在选中块内部，根据dropPosition归一化
+                    if (dropPosition === 'above') {
+                        actualDropIndex = selStart;
+                    } else {
+                        actualDropIndex = selEnd + 1;
+                    }
+                }
+
+                // ====== UI 数据结构更新 ======
+                const selectedSteps = selectedItems.map(item => item.step);
+
+                // 从后往前删除原位置，避免索引扰动
                 for (let i = selectedItems.length - 1; i >= 0; i--) {
                     newSteps.splice(selectedItems[i].index, 1);
                 }
-                
-                // 3. 计算实际插入位置
-                // actualDropIndex 是目标位置，需要考虑已删除的项目对索引的影响
+
+                // 计算实际插入位置（考虑删除造成的左移）
                 let actualInsertIndex = actualDropIndex;
                 for (const item of selectedItems) {
-                    if (item.index < actualDropIndex) {
-                        actualInsertIndex--;
+                    if (item.index < actualDropIndex) actualInsertIndex--;
+                }
+
+                // 保持原相对顺序，按选中顺序整体插入
+                newSteps.splice(actualInsertIndex, 0, ...selectedSteps);
+
+                // 批量更新
+                setAdjustmentSteps(newSteps, currentDisplayNames);
+
+                // 选中状态保持为移动后的连续块
+                const newSelectedIndices = new Set();
+                for (let i = 0; i < selectedSteps.length; i++) newSelectedIndices.add(actualInsertIndex + i);
+                setSelectedIndices(newSelectedIndices);
+                setSelectedIndex(null);
+
+                // ====== 多选拖拽：重构为"块冒泡移动"算法 ======
+                // 思路：按移动方向，重复将块相邻的非选中项跨越到块的另一侧，共K次；稳定且不破坏块内顺序。
+                if (sampleLayerId) {
+                    try {
+                        const { executeAsModal } = require("photoshop").core;
+                        const { batchPlay } = require("photoshop").action;
+                        await executeAsModal(async () => {
+                            await batchPlay([{
+                                _obj: "select",
+                                _target: [{ _ref: "layer", _id: sampleLayerId }],
+                                makeVisible: true,
+                                _options: { dialogOptions: "dontDisplay" }
+                            }], { synchronousExecution: true });
+
+                            const result0 = await batchPlay([{
+                                _obj: "get",
+                                _target: [{ _ref: "layer", _id: sampleLayerId }],
+                                _options: { dialogOptions: "dontDisplay" }
+                            }], { synchronousExecution: true });
+                            const L = (result0[0]?.smartObject?.filterFX || []).length;
+                            if (L === 0) return;
+
+                            // 当前 UI 队列从上到下 0..L-1
+                            let arr: number[] = Array.from({ length: L }, (_, i) => i);
+
+                            // 原始块范围
+                            const originalSelStart = selectedItems[0].index;
+                            const originalSelEnd = selectedItems[selectedItems.length - 1].index;
+
+                            // 计算方向与步数 K（必须基于“原始坐标系”的落点 actualDropIndex，而不是删除左移后的 actualInsertIndex）
+                            const moveUpK = Math.max(0, originalSelStart - actualDropIndex);
+                            const moveDownK = Math.max(0, actualDropIndex - (originalSelEnd + 1));
+
+                            // 如果不需要移动，直接返回
+                            if (moveUpK === 0 && moveDownK === 0) return;
+
+                            // 计算块在 arr 中的当前位置（初始即原始位置）
+                            let startPos = originalSelStart;
+                            let endPos = originalSelEnd;
+
+                            const moveOnce = async (fromPos: number, toPos: number) => {
+                                // 依据 arr 的 UI 位置换算到 PS 索引
+                                const psSourceIndex = Math.min(L, Math.max(1, L - fromPos));
+                                const psToBeforeIndex = Math.min(L + 1, Math.max(1, L - toPos + 1));
+                                // 仅在完全相同时跳过；相邻时也需要执行移动（尤其是从上往下的一步步推进）
+                                if (psSourceIndex === psToBeforeIndex) return;
+                                await batchPlay([
+                                    {
+                                        _obj: "move",
+                                        _target: [
+                                            { _ref: "filterFX", _index: psSourceIndex },
+                                            { _ref: "layer", _enum: "ordinal", _value: "targetEnum" }
+                                        ],
+                                        to: {
+                                            _ref: [
+                                                { _ref: "filterFX", _index: psToBeforeIndex },
+                                                { _ref: "layer", _enum: "ordinal", _value: "targetEnum" }
+                                            ]
+                                        },
+                                        _isCommand: false
+                                    }
+                                ], { synchronousExecution: true });
+                            };
+
+                            if (moveUpK > 0) {
+                                // 向上移动：每次把 startPos-1 的元素挪到块后面（endPos 后）
+                                for (let t = 0; t < moveUpK; t++) {
+                                    const neighborPos = startPos - 1;
+                                    // 执行一次移动：from neighborPos -> to endPos + 1（插到块后）
+                                    await moveOnce(neighborPos, endPos + 1);
+                                    // 更新 arr 与块位置
+                                    const id = arr[neighborPos];
+                                    arr.splice(neighborPos, 1);
+                                    // 移除 neighbor 后，块整体向上移动一位：startPos--, endPos--
+                                    startPos -= 1; endPos -= 1;
+                                    arr.splice(endPos + 1, 0, id);
+                                    // 插入到块后后，块位置不变
+                                }
+                            } else if (moveDownK > 0) {
+                                // 向下移动：每次把 endPos+1 的元素挪到块前面（startPos 位置）
+                                for (let t = 0; t < moveDownK; t++) {
+                                    const neighborPos = endPos + 1;
+                                    // 执行一次移动：from neighborPos -> to startPos（插到块前）
+                                    await moveOnce(neighborPos, startPos);
+                                    // 更新 arr 与块位置
+                                    const id = arr[neighborPos];
+                                    arr.splice(neighborPos, 1);
+                                    // 移除 neighbor 后，块位置不变
+                                    arr.splice(startPos, 0, id);
+                                    // 插在块前后，块整体向后推一位：startPos++, endPos++
+                                    startPos += 1; endPos += 1;
+                                }
+                            }
+                        }, { "commandName": "多选移动智能滤镜(块移动)" });
+
+                        try { await syncAdjustmentLayers(sampleLayerId); } catch {}
+                    } catch (error) {
+                        console.error('多选拖拽：块移动失败', error);
+                        try { await syncAdjustmentLayers(sampleLayerId); } catch {}
                     }
                 }
-                
-                // 4. 将选中的记录作为整体插入到目标位置
-                // 使用 splice 的展开语法一次性插入所有记录
-                newSteps.splice(actualInsertIndex, 0, ...selectedSteps);
-                
-                // 5. 使用批量更新API
-                setAdjustmentSteps(newSteps, displayNames);
-                
-                // 6. 更新选中状态：选中的记录现在位于 actualInsertIndex 开始的连续位置
-                const newSelectedIndices = new Set();
-                for (let i = 0; i < selectedSteps.length; i++) {
-                    newSelectedIndices.add(actualInsertIndex + i);
-                }
-                setSelectedIndices(newSelectedIndices);
-                setSelectedIndex(null); // 保持多选状态
-
-                // ====== 多选拖拽智能滤镜同步 ======
-                if (sampleLayerId) {
-                    // 延迟触发完整的重建式同步，确保不干扰已完成的UI更新
-                    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-                    syncTimeoutRef.current = setTimeout(async () => {
-                        try {
-                            await syncAdjustmentLayers(sampleLayerId);
-                            console.log("多选拖拽后的智能滤镜同步完成");
-                        } catch (error) {
-                            console.error('多选拖拽后同步失败:', error);
-                        }
-                    }, 600);
-                }
             } else {
-                // 单选拖拽
-                const draggedStep = newSteps[draggedIndex];
-                
-                // 删除原位置的项目
-                newSteps.splice(draggedIndex, 1);
+                // ====== 单选拖拽：回退为"PS先移动，UI后同步"策略 ======
                 
                 // 计算正确的插入位置
                 let insertIndex;
@@ -490,35 +739,111 @@ export const useRecord = () => {
                 } else {
                     insertIndex = actualDropIndex;
                 }
-                
-                newSteps.splice(insertIndex, 0, draggedStep);
-                
-                // 使用批量更新API
-                setAdjustmentSteps(newSteps, displayNames);
-                
-                // 更新选中状态到新位置（始终保持拖动项被选中）
-                setSelectedIndex(insertIndex);
-                setSelectedIndices(new Set());
-                setLastClickedIndex(insertIndex);
 
-                // ====== 单选拖拽智能滤镜同步 ======
-                // 单选时立即同步智能滤镜移动，保持UI与PS的高度一致性
-                if (sampleLayerId) {
-                    setTimeout(async () => {
-                        try {
-                            await syncAdjustmentLayers(sampleLayerId);
-                            console.log("单选拖拽后的智能滤镜同步完成");
-                        } catch (error) {
-                            console.error('单选拖拽后同步失败:', error);
-                        }
-                    }, 200);
+                // 先在Photoshop中移动智能滤镜
+                if (sampleLayerId && draggedIndex !== insertIndex) {
+                    try {
+                        const { executeAsModal } = require("photoshop").core;
+                        const { batchPlay } = require("photoshop").action;
+                        
+                        await executeAsModal(async () => {
+                            // 选择目标图层
+                            await batchPlay([{
+                                _obj: "select",
+                                _target: [{ _ref: "layer", _id: sampleLayerId }],
+                                makeVisible: true,
+                                _options: { dialogOptions: "dontDisplay" }
+                            }], { synchronousExecution: true });
+
+                            // 获取当前智能滤镜数量
+                            const result0 = await batchPlay([{
+                                _obj: "get",
+                                _target: [{ _ref: "layer", _id: sampleLayerId }],
+                                _options: { dialogOptions: "dontDisplay" }
+                            }], { synchronousExecution: true });
+                            const L = (result0[0]?.smartObject?.filterFX || []).length;
+                            
+                            if (L > 0) {
+                                // UI索引映射到PS索引：UI 0..L-1 对应 PS L..1
+                                const psSourceIndex = L - draggedIndex;
+                                const psToBeforeIndex = L - insertIndex + 1;
+                                
+                                // 如果实际需要移动
+                                if (psSourceIndex !== psToBeforeIndex && psSourceIndex !== psToBeforeIndex - 1) {
+                                    await batchPlay([{
+                                        _obj: "move",
+                                        _target: [
+                                            { _ref: "filterFX", _index: psSourceIndex },
+                                            { _ref: "layer", _enum: "ordinal", _value: "targetEnum" }
+                                        ],
+                                        to: {
+                                            _ref: [
+                                                { _ref: "filterFX", _index: psToBeforeIndex },
+                                                { _ref: "layer", _enum: "ordinal", _value: "targetEnum" }
+                                            ]
+                                        },
+                                        _isCommand: false
+                                    }], { synchronousExecution: true });
+                                    
+                                    console.log(`单选拖拽：PS移动成功 UI ${draggedIndex}->${insertIndex}, PS ${psSourceIndex}->${psToBeforeIndex}`);
+                                }
+                            }
+                        }, { "commandName": "单选移动智能滤镜" });
+
+                        // PS移动成功后，同步UI状态
+                        await syncAdjustmentLayers(sampleLayerId);
+                        
+                        // 更新选中状态到新位置
+                        setSelectedIndex(insertIndex);
+                        setSelectedIndices(new Set());
+                        setLastClickedIndex(insertIndex);
+                        
+                    } catch (error) {
+                        console.error('单选拖拽PS移动失败，回退到UI优先模式:', error);
+                        
+                        // 回退：如果PS移动失败，仍然更新UI并稍后同步
+                        const draggedStep = newSteps[draggedIndex];
+                        newSteps.splice(draggedIndex, 1);
+                        newSteps.splice(insertIndex, 0, draggedStep);
+                        setAdjustmentSteps(newSteps, currentDisplayNames);
+                        setSelectedIndex(insertIndex);
+                        setSelectedIndices(new Set());
+                        setLastClickedIndex(insertIndex);
+                        
+                        // 延迟同步
+                        setTimeout(async () => {
+                            try {
+                                await syncAdjustmentLayers(sampleLayerId);
+                            } catch (syncError) {
+                                console.error('单选拖拽延迟同步也失败:', syncError);
+                            }
+                        }, 200);
+                    }
+                } else {
+                    // 没有sampleLayerId或不需要移动的情况，仅更新UI
+                    const draggedStep = newSteps[draggedIndex];
+                    newSteps.splice(draggedIndex, 1);
+                    newSteps.splice(insertIndex, 0, draggedStep);
+                    setAdjustmentSteps(newSteps, currentDisplayNames);
+                    setSelectedIndex(insertIndex);
+                    setSelectedIndices(new Set());
+                    setLastClickedIndex(insertIndex);
                 }
             }
             
         } catch (error) {
             console.error('拖拽移动失败:', error);
-            const { showAlert } = require("photoshop").core;
-            showAlert({ message: `拖拽移动失败: ${error.message}` });
+            try {
+                const { showAlert } = require("photoshop").core;
+                showAlert({ message: `拖拽移动失败: ${error.message}` });
+            } catch {}
+            
+            // 发生错误时尝试同步矫正
+            if (sampleLayerId) {
+                try {
+                    await syncAdjustmentLayers(sampleLayerId);
+                } catch {}
+            }
         } finally {
             clearAllDragStates();
         }
@@ -998,6 +1323,12 @@ export const useRecord = () => {
             return classes.join(' ');
         },
         dropTargetIndex,
-        dropPosition
+        dropPosition,
+        // 新增导出：用于 li 的 onDragEnd 进行彻底清理
+        handleDragEnd,
+        // 新增导出：用于容器层处理顶部空白区域的悬停
+        handleContainerDragOver,
+        // 暴露给 MainContainer 作为 ul 的 ref
+        containerRef
     };
 };

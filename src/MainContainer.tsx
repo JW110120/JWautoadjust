@@ -36,7 +36,10 @@ const MainContainerContent: React.FC = () => {
         deleteSelectedItems,
         draggedIndex,
         dragOverIndex,
-        getItemClass // 新增导入
+        getItemClass, // 新增导入
+        handleDragEnd,
+        handleContainerDragOver,
+        containerRef
     } = useRecord();
 
     const handleRecordClick = async () => {
@@ -228,11 +231,18 @@ const MainContainerContent: React.FC = () => {
                 }
             }}>
                     <ul className="operation-list"
+                        ref={containerRef}
                         onDragOver={(e) => {
                             e.preventDefault();
+                            if (e.target === e.currentTarget) {
+                                handleContainerDragOver(e);
+                            }
                         }}
                         onDrop={async (e) => {
-                            // 交由具体项处理，不在容器层做顶部空白逻辑
+                            // 顶部空白处释放：按照当前 dropTargetIndex 处理，默认按最上方插入
+                            if (e.target === e.currentTarget) {
+                                await handleDrop(e, 0);
+                            }
                         }}
                         onClick={(e) => {
                             // 如果点击的是空白区域（不是列表项），取消选中
@@ -267,7 +277,7 @@ const MainContainerContent: React.FC = () => {
                                 onDragStart={(e) => handleDragStart(e, index)}
                                 onDragOver={(e) => handleDragOver(e, index)}
                                 onDragLeave={handleDragLeave}
-                                onDragEnd={() => handleDragLeave()}
+                                onDragEnd={handleDragEnd}
                                 onDrop={async (e) => await handleDrop(e, index)}
                                 className={`${
                                     isSelected ? 'selected' : ''
