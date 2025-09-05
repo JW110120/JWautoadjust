@@ -5,6 +5,7 @@ import { AdjustmentStepsContext } from './contexts/AdjustmentStepsContext';
 import { ToastQueue } from '@adobe/react-spectrum';
 import { DocumentInfoContext } from './contexts/DocumentInfoContext';
 import { useProcessing } from './contexts/ProcessingContext';
+import { VisibilityOffIcon, VisibilityOnIcon, TransparencyLockIcon, MoveLockIcon, LockClosedIcon, LockOpenIcon, ExpandRightIcon, ExpandDownIcon, FolderClosedIcon, FolderOpenIcon, BackgroundLockIcon } from './styles/Icons';
 
    // 渲染文件树
    const LayerTreeComponent = React.memo(({ 
@@ -14,11 +15,20 @@ import { useProcessing } from './contexts/ProcessingContext';
     toggleGroup, 
     handleLayerCheckboxChange,
     handleBlankAreaClick,
+    layerStates,
+    onToggleVisibility,
+    onToggleTransparencyLock,
+    onTogglePositionLock,
+    onToggleAllLock,
+    onUnlockBackground,
 }) => {
+    // 悬停图层追踪：用于“非悬停仅显示蓝色状态，悬停显示全部”
+    const [hoveredLayerId, setHoveredLayerId] = useState<number | null>(null);
+
     // 渲染图层树
     const renderLayerTree = (layers: Layer[], parentPath = '', indent = 0) => {
         // 创建一个映射来跟踪同名图层
-        const visibleLayerCount = {};
+        const visibleLayerCount = {} as Record<string, number>;
         
         // 第一次遍历，统计可见的同名图层数量
         layers.forEach(layer => {
@@ -37,7 +47,7 @@ import { useProcessing } from './contexts/ProcessingContext';
         });
         
         // 创建一个映射来跟踪每个名称已经处理的数量
-        const processedCount = {};
+        const processedCount = {} as Record<string, number>;
         
         return layers.map((layer, index) => {
             const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
@@ -62,34 +72,14 @@ import { useProcessing } from './contexts/ProcessingContext';
                             className="group-header"
                             onClick={() => toggleGroup(currentPath)}
                         >
-                            <svg 
-                                xmlns="http://www.w3.org/2000/svg" 
-                                height="18" 
-                                viewBox="0 0 18 18" 
-                                width="18"
-                                className={`toggle-icon ${collapsedGroups[currentPath] ? 'collapsed' : 'expanded'}`}
-                                style={{ fill: 'currentColor' }}
-                            >
-                                {collapsedGroups[currentPath] ? (
-                                    <path d="M12,9a.994.994,0,0,1-.2925.7045l-3.9915,3.99a1,1,0,1,1-1.4355-1.386l.0245-.0245L9.5905,9,6.3045,5.715A1,1,0,0,1,7.691,4.28l.0245.0245,3.9915,3.99A.994.994,0,0,1,12,9Z" />
-                                ) : (
-                                    <path d="M4,7.01a1,1,0,0,1,1.7055-.7055l3.289,3.286,3.289-3.286a1,1,0,0,1,1.437,1.3865l-.0245.0245L9.7,11.7075a1,1,0,0,1-1.4125,0L4.293,7.716A.9945.9945,0,0,1,4,7.01Z" />
-                                )}
-                            </svg>
-                            <svg 
-                                xmlns="http://www.w3.org/2000/svg" 
-                                height="18" 
-                                viewBox="0 0 18 18" 
-                                width="18"
-                                className="folder-icon"
-                                style={{ fill: 'currentColor' }}
-                            >
-                                {collapsedGroups[currentPath] ? (
-                                    <path d="M16.5,4l-7.166.004-1.65-1.7A1,1,0,0,0,6.9645,2H2A1,1,0,0,0,1,3V14.5a.5.5,0,0,0,.5.5h15a.5.5,0,0,0,.5-.5V4.5A.5.5,0,0,0,16.5,4ZM2,3H6.9645L8.908,5H2Z" />
-                                ) : (
-                                    <path d="M15,7V4.5a.5.5,0,0,0-.5-.5l-6.166.004-1.65-1.7A1,1,0,0,0,5.9645,2H2A1,1,0,0,0,1,3V14.5a.5.5,0,0,0,.5.5H14.6535a.5.5,0,0,0,.468-.3245l2.625-7A.5.5,0,0,0,17.2785,7ZM2,3H5.9645L7.617,4.7l.295.3035h.4225L14,5V7H4.3465a.5.5,0,0,0-.468.3245L2,12.3335Z" />
-                                )}
-                            </svg>
+                            {/* 折叠/展开图标 */}
+                            <span className={`toggle-icon ${collapsedGroups[currentPath] ? 'collapsed' : 'expanded'}`}>
+                                <span className="icon">{collapsedGroups[currentPath] ? <ExpandRightIcon /> : <ExpandDownIcon />}</span>
+                            </span>
+                            {/* 文件夹图标 */}
+                            <span className="folder-icon">
+                                <span className="icon">{collapsedGroups[currentPath] ? <FolderClosedIcon /> : <FolderOpenIcon />}</span>
+                            </span>
                             <span className="layer-name">{displayName}</span>
                             </div>
                             {!collapsedGroups[currentPath] && (
@@ -106,25 +96,109 @@ import { useProcessing } from './contexts/ProcessingContext';
                 
                 // 如果是空图层，不渲染
                 if (!hasContent) return null;
+
+                const state = layerStates?.[layer._id] || {} as any;
+                const isHidden = state.visible === false;
+                const isLockedAny = !!(state.protectAll || state.protectPosition || state.protectTransparency);
+                const hiddenOnly = isHidden && !isLockedAny;
+                const nameClass = `layer-name ${selectedLayerPaths[`${currentPath}_${index}`] ? 'selected' : ''} ${isHidden ? 'hidden' : ''} ${isLockedAny ? 'locked' : ''} ${hiddenOnly ? 'hidden-only' : ''} ${state.isBackground ? 'background' : ''}`;
+                const isHoveringThis = hoveredLayerId === layer._id;
+                
+                // 检查是否为背景图层（优先使用状态中的标记）
+                const isBackground = !!state.isBackground;
                 
                 return (
                     <li  
                         key={uniqueKey}
                         className="layer-item"
-                        onClick={(e) => e.stopPropagation()}
+                        onMouseEnter={() => setHoveredLayerId(layer._id)}
+                        onMouseLeave={() => setHoveredLayerId(null)}
                     >
                         <input 
                             type="checkbox" 
                             checked={selectedLayerPaths[`${currentPath}_${index}`] === true}
-                            onChange={(e) => handleLayerCheckboxChange(layer, currentPath, index, e)}
+                            onChange={(e) => {
+                                e.stopPropagation();
+                                handleLayerCheckboxChange(layer, currentPath, index, e);
+                            }}
                             className="layer-checkbox"
                         />
                         <span 
-                            onClick={(e) => handleLayerCheckboxChange(layer, currentPath, index, e)}
-                            className={`layer-name ${selectedLayerPaths[`${currentPath}_${index}`] ? 'selected' : ''}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleLayerCheckboxChange(layer, currentPath, index, e);
+                            }}
+                            className={nameClass}
                         >
                             {displayName}
                         </span>
+                        <div className={`layer-status-icons ${(isHidden || isLockedAny || isBackground) ? 'show' : ''}`}>
+                            {isBackground ? (
+                                // 背景图层：仅显示特殊的紫色锁定按钮
+                                <sp-action-button
+                                    className="icon-button background-lock active"
+                                    quiet
+                                    size="s"
+                                    title="解锁背景图层"
+                                    onClick={(e: any) => { e.stopPropagation(); onUnlockBackground(layer._id); }}
+                                    aria-label="解锁背景图层"
+                                >
+                                    <div slot="icon" className="icon"><BackgroundLockIcon active /></div>
+                                </sp-action-button>
+                            ) : (
+                                // 普通图层：四个按钮，但非悬停时仅显示激活的
+                                <>
+                                    {/* 隐藏/显示（固定第1位）*/}
+                                    <sp-action-button
+                                        className={`icon-button visibility-button ${isHidden ? 'active' : ''}`}
+                                        quiet
+                                        size="s"
+                                        title={isHidden ? '显示图层' : '隐藏图层'}
+                                        onClick={(e: any) => { e.stopPropagation(); onToggleVisibility(layer._id); }}
+                                        aria-label={isHidden ? '显示图层' : '隐藏图层'}
+                                        style={{ display: isHoveringThis || isHidden ? 'inline-flex' : 'none' }}
+                                    >
+                                        <div slot="icon" className="icon">{isHidden ? <VisibilityOffIcon active /> : <VisibilityOnIcon />}</div>
+                                    </sp-action-button>
+                                    {/* 不透明度锁定（固定第2位） */}
+                                    <sp-action-button
+                                        className={`icon-button transparency-lock ${state.protectTransparency ? 'active' : ''}`}
+                                        quiet
+                                        size="s"
+                                        title={state.protectTransparency ? '取消不透明度锁定' : '不透明度锁定'}
+                                        onClick={(e: any) => { e.stopPropagation(); onToggleTransparencyLock(layer._id); }}
+                                        aria-label={state.protectTransparency ? '取消不透明度锁定' : '不透明度锁定'}
+                                        style={{ display: isHoveringThis || state.protectTransparency ? 'inline-flex' : 'none' }}
+                                    >
+                                        <div slot="icon" className="icon"><TransparencyLockIcon active={!!state.protectTransparency} /></div>
+                                    </sp-action-button>
+                                    {/* 移动锁定（固定第3位） */}
+                                    <sp-action-button
+                                        className={`icon-button position-lock ${state.protectPosition ? 'active' : ''}`}
+                                        quiet
+                                        size="s"
+                                        title={state.protectPosition ? '取消移动锁定' : '移动锁定'}
+                                        onClick={(e: any) => { e.stopPropagation(); onTogglePositionLock(layer._id); }}
+                                        aria-label={state.protectPosition ? '取消移动锁定' : '移动锁定'}
+                                        style={{ display: isHoveringThis || state.protectPosition ? 'inline-flex' : 'none' }}
+                                    >
+                                        <div slot="icon" className="icon"><MoveLockIcon active={!!state.protectPosition} /></div>
+                                    </sp-action-button>
+                                    {/* 全锁定（固定第4位） */}
+                                    <sp-action-button
+                                        className={`icon-button lock-all ${state.protectAll ? 'active' : ''}`}
+                                        quiet
+                                        size="s"
+                                        title={state.protectAll ? '取消全锁定' : '全锁定'}
+                                        onClick={(e: any) => { e.stopPropagation(); onToggleAllLock(layer._id); }}
+                                        aria-label={state.protectAll ? '取消全锁定' : '全锁定'}
+                                        style={{ display: isHoveringThis || state.protectAll ? 'inline-flex' : 'none' }}
+                                    >
+                                        <div slot="icon" className="icon">{state.protectAll ? <LockClosedIcon active /> : <LockOpenIcon />}</div>
+                                    </sp-action-button>
+                                </>
+                            )}
+                        </div>
                     </li>
                 );
             }
@@ -164,6 +238,301 @@ const FileArea: React.FC = () => {
     const [lastClickedLayerIndex, setLastClickedLayerIndex] = useState(null);
     const [selectedLayerIndex, setSelectedLayerIndex] = useState(null);
     const { ref: layerListRef } = useScrollPosition();
+    const [layerStates, setLayerStates] = useState<Record<number, { visible: boolean; protectTransparency?: boolean; protectPosition?: boolean; protectAll?: boolean; isBackground?: boolean }>>({});
+
+    // 获取所有图层的显示/锁定状态
+    const fetchLayerStates = useCallback(async () => {
+        try {
+            const doc = app.activeDocument;
+            if (!doc) return;
+
+            const { batchPlay } = require("photoshop").action;
+
+            const collectAllLayers = (arr: any[], acc: any[] = []): any[] => {
+                arr.forEach((l) => {
+                    acc.push(l);
+                    if (l.layers && l.layers.length) {
+                        collectAllLayers(l.layers, acc);
+                    }
+                });
+                return acc;
+            };
+
+            const allLayers = collectAllLayers(doc.layers.slice());
+            if (!allLayers || allLayers.length === 0) {
+                setLayerStates({});
+                return;
+            }
+
+            const requests = allLayers.map((l: any) => ({
+                _obj: "get",
+                _target: [{ _ref: "layer", _id: l._id }],
+                _options: { dialogOptions: "dontDisplay" }
+            }));
+
+            const result = await batchPlay(requests, { synchronousExecution: true });
+            const newStates: Record<number, { visible: boolean; protectTransparency?: boolean; protectPosition?: boolean; protectAll?: boolean; isBackground?: boolean }> = {};
+            result.forEach((desc: any, i: number) => {
+                const id = allLayers[i]._id;
+                const locking = desc?.layerLocking || {};
+                newStates[id] = {
+                    visible: !!desc?.visible,
+                    protectTransparency: !!locking?.protectTransparency,
+                    protectPosition: !!locking?.protectPosition,
+                    protectAll: !!locking?.protectAll,
+                    isBackground: !!desc?.background,
+                };
+            });
+            setLayerStates(newStates);
+        } catch (e) {
+            console.error('获取图层状态失败:', e);
+        }
+    }, []);
+
+    // 在 updateTrigger 改变时刷新图层状态
+    useEffect(() => {
+        fetchLayerStates();
+    }, [fetchLayerStates, updateTrigger]);
+
+    // 切换图层可见性
+    const onToggleVisibility = useCallback(
+        async (layerId: number) => {
+            try {
+                const state = layerStates?.[layerId];
+                const willHide = state?.visible !== false; // 当前可见则隐藏
+                const { executeAsModal } = require('photoshop').core;
+                const { batchPlay } = require('photoshop').action;
+                await executeAsModal(
+                    async () => {
+                        await batchPlay(
+                            [
+                                {
+                                    _obj: willHide ? 'hide' : 'show',
+                                    null: [{ _ref: 'layer', _id: layerId }],
+                                    _options: { dialogOptions: 'dontDisplay' },
+                                },
+                            ],
+                            { synchronousExecution: true }
+                        );
+                    },
+                    { commandName: willHide ? '隐藏图层' : '显示图层' }
+                );
+    
+                setLayerStates((prev) => ({
+                    ...prev,
+                    [layerId]: {
+                        ...prev[layerId],
+                        visible: !willHide,
+                    },
+                }));
+            } catch (e) {
+                console.error('切换可见性失败:', e);
+            }
+        },
+        [layerStates]
+    );
+    
+    // 切换不透明度锁定
+    const onToggleTransparencyLock = useCallback(
+        async (layerId: number) => {
+            try {
+                const s = (layerStates?.[layerId] || {}) as any;
+                const next = {
+                    protectTransparency: !s.protectTransparency,
+                    protectPosition: !!s.protectPosition,
+                    protectAll: false, // 切换子锁时取消全锁
+                };
+                const { executeAsModal } = require('photoshop').core;
+                const { batchPlay } = require('photoshop').action;
+                await executeAsModal(
+                    async () => {
+                        await batchPlay(
+                            [
+                                {
+                                    _obj: 'applyLocking',
+                                    _target: [{ _ref: 'layer', _id: layerId }],
+                                    layerLocking: {
+                                        _obj: 'layerLocking',
+                                        protectAll: next.protectAll,
+                                        protectPosition: next.protectPosition,
+                                        protectTransparency: next.protectTransparency,
+                                    },
+                                    _options: { dialogOptions: 'dontDisplay' },
+                                },
+                            ],
+                            { synchronousExecution: true }
+                        );
+                    },
+                    { commandName: '切换不透明度锁定' }
+                );
+    
+                setLayerStates((prev) => ({
+                    ...prev,
+                    [layerId]: {
+                        ...prev[layerId],
+                        protectTransparency: next.protectTransparency,
+                        protectPosition: next.protectPosition,
+                        protectAll: next.protectAll,
+                    },
+                }));
+            } catch (e) {
+                console.error('切换不透明度锁定失败:', e);
+            }
+        },
+        [layerStates]
+    );
+    
+    // 切换位置锁定
+    const onTogglePositionLock = useCallback(
+        async (layerId: number) => {
+            try {
+                const s = (layerStates?.[layerId] || {}) as any;
+                const next = {
+                    protectTransparency: !!s.protectTransparency,
+                    protectPosition: !s.protectPosition,
+                    protectAll: false, // 切换子锁时取消全锁
+                };
+                const { executeAsModal } = require('photoshop').core;
+                const { batchPlay } = require('photoshop').action;
+                await executeAsModal(
+                    async () => {
+                        await batchPlay(
+                            [
+                                {
+                                    _obj: 'applyLocking',
+                                    _target: [{ _ref: 'layer', _id: layerId }],
+                                    layerLocking: {
+                                        _obj: 'layerLocking',
+                                        protectAll: next.protectAll,
+                                        protectPosition: next.protectPosition,
+                                        protectTransparency: next.protectTransparency,
+                                    },
+                                    _options: { dialogOptions: 'dontDisplay' },
+                                },
+                            ],
+                            { synchronousExecution: true }
+                        );
+                    },
+                    { commandName: '切换位置锁定' }
+                );
+    
+                setLayerStates((prev) => ({
+                    ...prev,
+                    [layerId]: {
+                        ...prev[layerId],
+                        protectTransparency: next.protectTransparency,
+                        protectPosition: next.protectPosition,
+                        protectAll: next.protectAll,
+                    },
+                }));
+            } catch (e) {
+                console.error('切换位置锁定失败:', e);
+            }
+        },
+        [layerStates]
+    );
+    
+    // 切换全锁定
+    const onToggleAllLock = useCallback(
+        async (layerId: number) => {
+            try {
+                const s = (layerStates?.[layerId] || {}) as any;
+                // 仅切换 protectAll，其它两个锁保持原状，互不影响
+                const next = {
+                    protectAll: !s.protectAll,
+                    protectTransparency: !!s.protectTransparency,
+                    protectPosition: !!s.protectPosition,
+                };
+                const { executeAsModal } = require('photoshop').core;
+                const { batchPlay } = require('photoshop').action;
+                await executeAsModal(
+                    async () => {
+                        await batchPlay(
+                            [
+                                {
+                                    _obj: 'applyLocking',
+                                    _target: [{ _ref: 'layer', _id: layerId }],
+                                    layerLocking: {
+                                        _obj: 'layerLocking',
+                                        protectAll: next.protectAll,
+                                        protectPosition: next.protectPosition,
+                                        protectTransparency: next.protectTransparency,
+                                    },
+                                    _options: { dialogOptions: 'dontDisplay' },
+                                },
+                            ],
+                            { synchronousExecution: true }
+                        );
+                    },
+                    { commandName: '切换全锁定' }
+                );
+
+                setLayerStates((prev) => ({
+                    ...prev,
+                    [layerId]: {
+                        ...prev[layerId],
+                        protectAll: next.protectAll,
+                        protectTransparency: next.protectTransparency,
+                        protectPosition: next.protectPosition,
+                    },
+                }));
+            } catch (e) {
+                console.error('切换全锁定失败:', e);
+            }
+        },
+        [layerStates]
+    );
+
+    // 解锁背景图层（将背景转换为普通图层，使用用户提供的描述）
+    const onUnlockBackground = useCallback(async (layerId: number) => {
+        try {
+            const { executeAsModal } = require('photoshop').core;
+            const { batchPlay } = require('photoshop').action;
+            await executeAsModal(
+                async () => {
+                    await batchPlay([
+                        {
+                            _obj: 'select',
+                            _target: [{ _ref: 'layer', _id: layerId }],
+                            makeVisible: true,
+                            _options: { dialogOptions: 'dontDisplay' }
+                        },
+                        {
+                            _obj: 'set',
+                            _target: [
+                                {
+                                    _ref: 'layer',
+                                    _property: 'background'
+                                }
+                            ],
+                            to: {
+                                _obj: 'layer',
+                                opacity: { _unit: 'percentUnit', _value: 100 },
+                                mode: { _enum: 'blendMode', _value: 'normal' }
+                            },
+                            _isCommand: false
+                        }
+                    ], { synchronousExecution: true });
+                },
+                { commandName: '解锁背景图层' }
+            );
+
+            // 本地状态更新：该图层不再是背景
+            setLayerStates(prev => ({
+                ...prev,
+                [layerId]: {
+                    ...prev[layerId],
+                    isBackground: false
+                }
+            }));
+            // 重新拉取一次，保证与 PS 状态一致
+            fetchLayerStates();
+            // 刷新文件树，保证名称（如“背景”→“图层 0”）立即更新
+            refreshLayers();
+        } catch (e) {
+            console.error('解锁背景图层失败:', e);
+        }
+    }, [fetchLayerStates, refreshLayers]);
 
     // 获取像素图层
     const getPixelLayers = useCallback(async () => {
@@ -274,19 +643,10 @@ const FileArea: React.FC = () => {
                 ], { synchronousExecution: true });
 
                 // 3. 转换为智能对象
-                await batchPlay([{
-                    _obj: "newPlacedLayer"
-                }], { synchronousExecution: true });
+                await batchPlay([{_obj: "newPlacedLayer"}], { synchronousExecution: true });
 
                 // 3. 获取当前选中图层
-                const result = await batchPlay([{
-                    _obj: "get",
-                    _target: [{
-                        _ref: "layer",
-                        _enum: "ordinal",
-                        _value: "targetEnum"
-                    }]
-                }], { synchronousExecution: true });
+                const result = await batchPlay([{_obj: "get", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }]}], { synchronousExecution: true });
 
                 const newLayer = result[0];
 
@@ -299,54 +659,17 @@ const FileArea: React.FC = () => {
                 for (let f = 1; f <= filterCount; f++) {
                     await batchPlay([{
                         _obj: "duplicate",
-                        _target: [{
-                            _ref: "filterFX",
-                            _index: f
-                        }, {
-                            _ref: "layer",
-                            _name: "样本图层"
-                        }],
-                        to: {
-                            _ref: [{
-                                _ref: "filterFX",
-                                _index: f
-                            }, {
-                                _ref: "layer",
-                                _enum: "ordinal",
-                                _value: "targetEnum"
-                            }]
-                        },
-                        _options: {
-                            dialogOptions: "dontDisplay"
-                        }
+                        _target: [{ _ref: "filterFX", _index: f }, { _ref: "layer", _name: "样本图层" }],
+                        to: { _ref: [{ _ref: "filterFX", _index: f }, { _ref: "layer", _enum: "ordinal", _value: "targetEnum" }] },
+                        _options: { dialogOptions: "dontDisplay" }
                     }], { synchronousExecution: true });
                 }
                 
                 // 5. 栅格化
-                await batchPlay([{
-                    _obj: "rasterizeLayer",
-                    _target: [{
-                        _ref: "layer",
-                        _enum: "ordinal",
-                        _value: "targetEnum"
-                    }],
-                    rasterizeLayer: "entire"
-                }], { synchronousExecution: true });
+                await batchPlay([{ _obj: "rasterizeLayer", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }], rasterizeLayer: "entire" }], { synchronousExecution: true });
 
                 // 6. 取消选择所有图层
-                await batchPlay([
-                    {
-                        _obj: "selectNoLayers",
-                        _target: [{
-                            _ref: "layer",
-                            _enum: "ordinal",
-                            _value: "targetEnum"
-                        }],
-                        _options: {
-                            dialogOptions: "dontDisplay"
-                        }
-                    }
-                ], { synchronousExecution: true });
+                await batchPlay([{ _obj: "selectNoLayers", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }], _options: { dialogOptions: "dontDisplay" } }], { synchronousExecution: true });
 
             }, { commandName: "处理图层" });
 
@@ -671,8 +994,14 @@ const FileArea: React.FC = () => {
                 handleLayerCheckboxChange={handleLayerCheckboxChange}
                 handleBlankAreaClick={handleBlankAreaClick}
                 layerListRef={layerListRef}
+                layerStates={layerStates}
+                onToggleVisibility={onToggleVisibility}
+                onToggleTransparencyLock={onToggleTransparencyLock}
+                onTogglePositionLock={onTogglePositionLock}
+                onToggleAllLock={onToggleAllLock}
+                onUnlockBackground={onUnlockBackground}
             />
-        ), [documentLayers, collapsedGroups, selectedLayerPaths, toggleGroup, handleLayerCheckboxChange, handleBlankAreaClick, layerListRef]),
+        ), [documentLayers, collapsedGroups, selectedLayerPaths, toggleGroup, handleLayerCheckboxChange, handleBlankAreaClick, layerListRef, layerStates, onToggleVisibility, onToggleTransparencyLock, onTogglePositionLock, onToggleAllLock, onUnlockBackground]),
         applyAdjustments,
         selectedLayers,
         progress,

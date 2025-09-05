@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { app } from 'photoshop';
 import { getButtonStyle, handleMouseOver, handleMouseOut } from '../styles/buttonStyles';
+import { BackIcon } from '../styles/Icons';
 
 // 导入所需的 Photoshop API
 const { action, core } = require("photoshop");
@@ -197,14 +198,7 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
             onMouseOut={handleMouseOut}
         >
             <div slot="icon" className="icon">
-                <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    height="18" 
-                    viewBox="0 0 18 18" 
-                    width="18"
-                >
-                    <path d="M5,5V2.6035a.25.25,0,0,0-.427-.177L0,7l4.573,4.573A.25.25,0,0,0,5,11.3965V9h8v6.5a.5.5,0,0,0,.5.5h3a.5.5,0,0,0,.5-.5V8a3,3,0,0,0-3-3Z" />
-                </svg>
+                <BackIcon />
             </div>
             <span>回退</span>
         </sp-action-button>

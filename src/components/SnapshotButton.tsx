@@ -1,6 +1,7 @@
 import React from 'react';
 import { app } from 'photoshop';
 import { getButtonStyle, handleMouseOver, handleMouseOut } from '../styles/buttonStyles';
+import { SnapshotIcon } from '../styles/Icons';
 
 interface SnapshotButtonProps {
     isRecording: boolean;
@@ -56,14 +57,7 @@ const SnapshotButton: React.FC<SnapshotButtonProps> = ({ isRecording }) => {
             onMouseOut={handleMouseOut}
         >
             <div slot="icon" className="icon">
-                <svg 
-                    viewBox="0 0 18 18"
-                    focusable="false"
-                    aria-hidden="true"
-                    role="img"
-                >
-                    <path d="M16.5,4H13V2.5a.5.5,0,0,0-.5-.5h-7a.5.5,0,0,0-.5.5V4H1.5a.5.5,0,0,0-.5.5v11a.5.5,0,0,0,.5.5h15a.5.5,0,0,0,.5-.5V4.5A.5.5,0,0,0,16.5,4ZM6,3h6V4H6ZM9,14.1A3.6,3.6,0,1,1,12.6,10.5,3.6,3.6,0,0,1,9,14.1Z"/>
-                </svg>
+                <SnapshotIcon />
             </div>
             <span>快照</span> 
         </sp-action-button>

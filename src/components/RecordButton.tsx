@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { app } from 'photoshop';
 import { getButtonStyle, handleMouseOver, handleMouseOut } from '../styles/buttonStyles';
+import { RecordIcon } from '../styles/Icons';
 
 interface RecordButtonProps {
     isRecording: boolean;
@@ -35,18 +36,8 @@ const RecordButton: React.FC<RecordButtonProps> = ({ isRecording, onRecordClick 
             onMouseOver={(e) => handleMouseOver(e, isButtonDisabled)}
             onMouseOut={handleMouseOut}
         >
-            <div slot="icon" className="icon">
-                <svg 
-                    viewBox="0 0 18 18"
-                    focusable="false"
-                    aria-hidden="true"
-                    role="img"
-                    style={{ 
-                        fill: isRecording ? 'var(--REC-icon)' : 'var(--icon)'
-                    }}
-                >
-                    <circle cx="9" cy="9" r="8" />
-                </svg>
+            <div slot="icon" className="icon" aria-hidden="true">
+                <RecordIcon active={isRecording} />
             </div>
             <span>{isRecording ? '停止' : '记录'}</span>
         </sp-action-button>

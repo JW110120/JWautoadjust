@@ -161,7 +161,6 @@ html,body {
     z-index: 1000;
 }
 
-/* drag-over 样式已移除，避免与 drop-line 冲突 */
 
 /* 多选状态样式增强 */
 .operation-list li.selected:not(:hover) {
@@ -189,11 +188,12 @@ html,body {
 }
 
 .layer-item {
-    padding: 8px 0px;  /* 修改内边距 */
+    padding: 8px 0px;  /* 调整为更紧凑的高度 */
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     font-size: 14px;  /* 添加字体大小 */
+    min-height: 32px; /* 固定行高，避免hover时因图标显隐而抖动 */
 }
 
 .group-button {
@@ -203,13 +203,13 @@ html,body {
 }
 
 .group-header {
-    padding: 4px 0px;  /* 修改内边距 */
+    padding: 6px 0px;  /* 修改内边距 */
     display: flex;
     align-items: center;
     cursor: pointer;
-    border-bottom: 2px solid var(--border);
     width: 100%;
     font-size: 16px;
+    font-weight: bold;
 }
 
 .layer-list .group-button {
@@ -225,17 +225,7 @@ html,body {
   color: var(--text);
 }
 
-.layer-checkbox {
-  margin: 0 8px 0 0;
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-
-.layer-name.selected {
-  color: var(--text-selected);
-}
-  
+ 
 .toggle-icon {
   margin-right: 8px;
   transition: transform 0.2s;
@@ -284,43 +274,198 @@ html,body {
   z-index: 1000;     /* 增加 z-index 确保按钮区域在上层 */
 }
 
+/* 调整图标大小与颜色（保持主题对比） */
 .icon {
-  fill: var(--icon);
-  height: 14px;
-  width: 14px;
-  margin-top: 2px;
-  margin-right: 3px;
+  color: var(--icon);
+  height: 18px;
+  width: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .icon svg {
-  fill: var(--icon);
-  height: 14px;
-  width: 14px;
+  fill: currentColor;
+  height: 18px;
+  width: 18px;
 }
 
-/* 上拉菜单样式 */
-.dropdown {
+/* 录制按钮激活时，底部图标变为红色 */
+.bottom-button.recording .icon { color: var(--danger) !important; }
+
+/* 图层名称避免竖排，保持横向排列 */
+.layer-name {
+  color: var(--text);
   display: inline-block;
+  white-space: nowrap;
+  flex: 1 1 auto;      /* 占据剩余空间，避免与按钮互相挤压 */
+  min-width: 0;        /* 允许内容在容器内收缩，防止换行导致高度抖动 */
 }
 
-.dropdown-content {
-  min-width: 130px;
+
+/* 右侧状态图标容器与列表项布局 */
+.layer-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;           /* 列表项占满整行，hover 区域稳定 */
 }
 
-.dropdown-content a {
-  background-color: var(--bg);/* 有效 */
-  color: var(--text);/* 有效 */
-  border: 1px solid var(--border);/* 有效 */
-  padding: 8px 14px;/* 有效 */
-  display: block;
+.layer-checkbox {
+  margin: 0 8px 0 0;
+  width: 16px;
+  height: 16px;
   cursor: pointer;
-  font-size: 12px;  /* 添加字体大小 */
+  flex: 0 0 auto; /* 勾选框固定宽度 */
 }
 
-.dropdown-content a:hover {
-  background-color: var(--bg-hover);/* 有效 */
+/* 图层名容器：充满中间区域，不与右侧图标重叠 */
+.layer-name {
+  color: var(--text);
+  display: inline-block;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+  pointer-events: auto; /* 确保点击仅落在名字上 */
+  overflow: hidden;           /* 防止文本越过图标区 */
+  text-overflow: ellipsis;    /* 溢出显示省略号 */
 }
 
+/* 右侧图标容器：与名字分栏对齐，禁止名字点击穿透 */
+.layer-status-icons {
+  margin-left: auto;
+  display: flex;
+  width: auto;
+  min-width: 0;
+  justify-content: flex-end;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 120ms ease-in-out;
+  flex: 0 0 auto;
+  /* 固定容器高度，避免悬停时抖动 */
+  height: 24px;
+  align-items: center;
+}
+
+/* 每个按钮固定24px方块，占位 */
+.layer-status-icons sp-action-button.icon-button {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--icon);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 默认非激活：占位但不可见；悬停或聚焦显示全部 */
+.layer-status-icons sp-action-button.icon-button { visibility: hidden; display: inline-flex; }
+.layer-item:hover .layer-status-icons sp-action-button.icon-button,
+.layer-status-icons sp-action-button.icon-button.active,
+.layer-status-icons sp-action-button.icon-button:focus-visible { visibility: visible; }
+
+/* 统一svg尺寸及着色 */
+.layer-status-icons sp-action-button.icon-button .icon svg { width: 18px; height: 18px; display: block; }
+
+/* 颜色语义变量 */
+:root {
+  --accent: #2680EB;
+  --warn: #f1c40f;
+  --danger: #e74c3c;
+  --purple: #9b59b6; /* 背景锁 */
+}
+
+/* 激活颜色覆盖 */
+.layer-status-icons sp-action-button.icon-button.visibility-button.active { color: var(--warn) !important; }
+.layer-status-icons sp-action-button.icon-button.transparency-lock.active,
+.layer-status-icons sp-action-button.icon-button.position-lock.active,
+.layer-status-icons sp-action-button.icon-button.lock-all.active { color: var(--danger) !important; }
+
+/* 所有状态下图形元素填充随 currentColor 渲染 */
+.layer-status-icons sp-action-button.icon-button .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button:hover .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button.active .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button.active:hover .icon .icon-fill { fill: currentColor !important; }
+
+/* 非悬停时隐藏未激活按钮的矢量图形（双保险之一）*/
+.layer-item:not(:hover) .layer-status-icons sp-action-button.icon-button:not(.active) .icon .icon-fill { display: none !important; }
+/* 悬停后恢复 */
+.layer-item:hover .layer-status-icons sp-action-button.icon-button .icon .icon-fill { display: inline !important; }
+
+/* 背景锁按钮着色（双保险）*/
+.layer-status-icons sp-action-button.icon-button.background-lock.active,
+.layer-status-icons sp-action-button.icon-button.background-lock.active:hover { color: var(--purple, #9b59b6) !important; }
+
+/* 默认颜色 */
+.layer-status-icons sp-action-button.icon-button { visibility: hidden; }
+.layer-item:hover .layer-status-icons sp-action-button.icon-button,
+.layer-status-icons sp-action-button.icon-button.active,
+.layer-status-icons sp-action-button.icon-button:focus-visible { visibility: visible; }
+
+/* 统一svg尺寸及着色 */
+.layer-status-icons sp-action-button.icon-button .icon svg { width: 18px; height: 18px; display: block; }
+
+/* 颜色语义变量 */
+:root {
+  --accent: #2680EB;
+  --warn: #f1c40f;
+  --danger: #e74c3c;
+  --purple: #9b59b6; /* 背景锁 */
+}
+
+/* 激活颜色覆盖 */
+.layer-status-icons sp-action-button.icon-button.visibility-button.active { color: var(--warn) !important; }
+.layer-status-icons sp-action-button.icon-button.transparency-lock.active,
+.layer-status-icons sp-action-button.icon-button.position-lock.active,
+.layer-status-icons sp-action-button.icon-button.lock-all.active { color: var(--danger) !important; }
+
+/* 所有状态下图形元素填充随 currentColor 渲染 */
+.layer-status-icons sp-action-button.icon-button .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button:hover .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button.active .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button.active:hover .icon .icon-fill { fill: currentColor !important; }
+
+/* 非悬停时隐藏未激活按钮的矢量图形（双保险之一）*/
+.layer-item:not(:hover) .layer-status-icons sp-action-button.icon-button:not(.active) .icon .icon-fill { display: none !important; }
+/* 悬停后恢复 */
+.layer-item:hover .layer-status-icons sp-action-button.icon-button .icon .icon-fill { display: inline !important; }
+
+/* 背景锁按钮着色（双保险）*/
+.layer-status-icons sp-action-button.icon-button.background-lock.active,
+.layer-status-icons sp-action-button.icon-button.background-lock.active:hover { color: var(--purple, #9b59b6) !important; }
+
+/* 组头图标也统一随 currentColor 渲染（用于展开/折叠、文件夹） */
+.group-header .icon svg { fill: currentColor !important; }
+
+/* hover 不改变激活色 */
+.layer-status-icons sp-action-button.icon-button:hover { color: var(--text); }
+.layer-status-icons .visibility-button.active:hover { color: var(--warn); }
+.layer-status-icons .transparency-lock.active:hover,
+.layer-status-icons .position-lock.active:hover,
+.layer-status-icons .lock-all.active:hover { color: var(--danger); }
+
+/* 图层名颜色联动：
+   - 仅隐藏：黄色
+   - 任意锁：红色（无视是否隐藏）
+*/
+.layer-name.hidden-only { color: var(--warn); opacity: 1; }
+.layer-name.locked { color: var(--danger); opacity: 1; }
+.layer-name.hidden.locked,
+.layer-name.locked.hidden { color: var(--danger); opacity: 1; }
+
+/* 组头图标与文件夹图标统一颜色 */
+.group-header .icon { color: var(--icon); display: inline-flex; align-items: center; justify-content: center; }
+.group-header .icon svg { width: 18px; height: 18px; fill: currentColor; }
+
+/* 其它已有样式保持不变 */
+
+/* 底部信息栏（补回） */
 .info-section {
   display: flex;
   justify-content: space-between;
@@ -334,47 +479,105 @@ html,body {
   left: 0;
   z-index: 1000;
 }
+.doc-info { font-size: 10px; color: var(--text-sb); text-align: left; position: relative; bottom: 1px; }
+.copyright-info { font-size: 10px; color: var(--text-sb); text-align: right; position: relative; bottom: 2px; }
 
-.doc-info {
-  font-size: 10px;
-  color: var(--text-sb);
-  text-align: left;
-  position: relative;  
-  bottom: 1px;        
-}
-
-.copyright-info {
-  font-size: 10px;
-  color: var(--text-sb);
-  text-align: right;
-  position: relative;  
-  bottom: 2px;   
-}
-
-/* PS风格的拖放边界线 */
-.operation-list li.drop-line-above {
-  position: relative;
-}
+/* 拖放边界线（补回） */
+.operation-list li.drop-line-above { position: relative; }
 .operation-list li.drop-line-above::before {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  top: -1px;
-  height: 2px;
+  left: 0; right: 0; top: -1px; height: 2px;
   background-color: var(--accent, #2680EB);
 }
-
-/* 列表最后一项的下边界（仅在拖到最底部时显示） */
-.operation-list li.drop-line-below {
-  position: relative;
-}
+.operation-list li.drop-line-below { position: relative; }
 .operation-list li.drop-line-below::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
+  left: 0; right: 0; bottom: -1px; height: 2px;
   background-color: var(--accent, #2680EB);
+}
+
+
+/* Spectrum sp-action-button 作为图标按钮的尺寸与交互 */
+/* 统一图标按钮尺寸 */
+.layer-status-icons sp-action-button.icon-button {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--icon);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 让 svg 尺寸完全一致，避免“上锁”看起来偏小 */
+.layer-status-icons sp-action-button.icon-button .icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  transform-origin: center center;
+}
+
+
+.layer-status-icons sp-action-button.icon-button.active {
+  color: currentColor;
+}
+
+
+.layer-status-icons sp-action-button.icon-button:hover { color: var(--text); }
+.layer-status-icons sp-action-button.icon-button.active:hover { color: currentColor; }
+
+
+.layer-status-icons .visibility-button.active,
+.layer-status-icons .transparency-lock.active,
+.layer-status-icons .position-lock.active,
+.layer-status-icons .lock-all.active {
+  color: currentColor;
+}
+
+.layer-status-icons sp-action-button.icon-button:hover {
+  color: var(--text);
+}
+
+/* 插槽里的 svg 容器保持居中 */
+.layer-status-icons sp-action-button.icon-button .icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 右侧图标按钮：默认仅显示激活项，hover 显示全部（使用 visibility 占位，避免布局抖动） */
+.layer-status-icons sp-action-button.icon-button { visibility: hidden; display: inline-flex; }
+.layer-item:hover .layer-status-icons sp-action-button.icon-button,
+.layer-status-icons sp-action-button.icon-button.active,
+.layer-status-icons sp-action-button.icon-button:focus-visible { visibility: visible; }
+
+/* 颜色直接作用在 svg 与具体图形元素上，统一随 currentColor 渲染 */
+.layer-status-icons sp-action-button.icon-button .icon svg { color: var(--icon); }
+.layer-status-icons sp-action-button.icon-button:hover .icon svg { color: var(--text); }
+.layer-status-icons sp-action-button.icon-button.active .icon svg { color: currentColor; }
+.layer-status-icons sp-action-button.icon-button.active:hover .icon svg { color: currentColor; }
+.layer-status-icons sp-action-button.icon-button .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button:hover .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button.active .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button.active:hover .icon .icon-fill { fill: currentColor !important; }
+
+/* 添加紫色（背景锁）语义色 */
+:root { --purple: #9b59b6; }
+
+/* 非悬停时，未激活按钮仅通过隐藏其矢量图形实现“不可见”效果（双保险之一） */
+.layer-item:not(:hover) .layer-status-icons sp-action-button.icon-button:not(.active) .icon .icon-fill {
+  display: none !important;
+}
+/* 悬停后恢复所有图形显示 */
+.layer-item:hover .layer-status-icons sp-action-button.icon-button .icon .icon-fill {
+  display: inline !important;
+}
+
+/* 背景图层的紫色锁定按钮颜色（双保险） */
+.layer-status-icons sp-action-button.icon-button.background-lock.active,
+.layer-status-icons sp-action-button.icon-button.background-lock.active:hover {
+  color: var(--purple, #9b59b6) !important;
 }
