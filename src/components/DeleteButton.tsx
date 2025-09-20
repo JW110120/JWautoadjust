@@ -43,6 +43,7 @@ const DeleteButton: React.FC<DeleteButtonProps> = ({
 
     return (
         <sp-action-button 
+            disabled={isButtonDisabled as any}
             onClick={handleClick}
             title={
                 isDeleting ? '删除中...' : 

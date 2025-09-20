@@ -654,12 +654,31 @@ const FileArea: React.FC = () => {
                     throw new Error('转换为智能对象失败：无法获取新图层');
                 }
 
+                // 在复制前解析样本智能对象ID（必须既叫“样本图层”且类型为 smartObject）
+                const doc = app.activeDocument;
+                const findSampleSOId = (layers: any[]): number | null => {
+                    for (const lyr of layers) {
+                        if (lyr.name === '样本图层' && (lyr as any).kind === 'smartObject') {
+                            return (lyr as any).id ?? (lyr as any)._id ?? null;
+                        }
+                        if ((lyr as any).kind === 'group' && (lyr as any).layers) {
+                            const child = findSampleSOId((lyr as any).layers);
+                            if (child) return child;
+                        }
+                    }
+                    return null;
+                };
+                const sampleSOId = findSampleSOId(doc.layers as any);
+                if (!sampleSOId) {
+                    throw new Error('未找到名为“样本图层”的智能对象');
+                }
+
                 // 4. 循环复制所有滤镜
                 const filterCount = adjustmentSteps.length;
                 for (let f = 1; f <= filterCount; f++) {
                     await batchPlay([{
                         _obj: "duplicate",
-                        _target: [{ _ref: "filterFX", _index: f }, { _ref: "layer", _name: "样本图层" }],
+                        _target: [{ _ref: "filterFX", _index: f }, { _ref: "layer", _id: sampleSOId }],
                         to: { _ref: [{ _ref: "filterFX", _index: f }, { _ref: "layer", _enum: "ordinal", _value: "targetEnum" }] },
                         _options: { dialogOptions: "dontDisplay" }
                     }], { synchronousExecution: true });
@@ -693,6 +712,26 @@ const FileArea: React.FC = () => {
             setListenerEnabled(false);
             setIsProcessing(true);  // 开始处理
             setProgress(0);
+
+            // 新增：在复制滤镜与任何处理前创建一次快照，名称须与回退按钮一致
+            try {
+                const { executeAsModal } = require("photoshop").core;
+                const { batchPlay } = require("photoshop").action;
+                const SNAPSHOT_NAME = '调整拆分前';
+                await executeAsModal(async () => {
+                    await batchPlay([
+                        {
+                            _obj: "make",
+                            _target: [{ _ref: "snapshotClass" }],
+                            from: { _ref: "historyState", _enum: "ordinal", _value: "targetEnum" },
+                            name: SNAPSHOT_NAME,
+                            using: { _enum: "historyStateSource", _value: "fullDocument" }
+                        }
+                    ], { synchronousExecution: true });
+                }, { commandName: '创建调整拆分前快照' });
+            } catch (e) {
+                console.warn('创建快照失败（不中断流程）：', e);
+            }
             
             // 创建一个本地副本，避免状态更新影响处理
             const layersToProcess = [...selectedLayers];
@@ -728,20 +767,38 @@ const FileArea: React.FC = () => {
                 const { executeAsModal } = require("photoshop").core;
                 const { batchPlay } = require("photoshop").action;
                 
-                await executeAsModal(async () => {
-                    await batchPlay([
-                        {
-                            _obj: "delete",
-                            _target: [
-                                {
-                                    _ref: "layer",
-                                    _name: "样本图层"
-                                }
-                            ],
-                            _options: { dialogOptions: "dontDisplay" }
+                // 先定位样本智能对象ID（严格：名称+类型）
+                const doc = app.activeDocument;
+                const findSampleSOId = (layers: any[]): number | null => {
+                    for (const lyr of layers) {
+                        if (lyr.name === '样本图层' && (lyr as any).kind === 'smartObject') {
+                            return (lyr as any).id ?? (lyr as any)._id ?? null;
                         }
-                    ], { synchronousExecution: true });
-                }, { commandName: "删除样本图层" });
+                        if ((lyr as any).kind === 'group' && (lyr as any).layers) {
+                            const child = findSampleSOId((lyr as any).layers);
+                            if (child) return child;
+                        }
+                    }
+                    return null;
+                };
+                const sampleSOId = findSampleSOId(doc.layers as any);
+
+                if (sampleSOId) {
+                    await executeAsModal(async () => {
+                        await batchPlay([
+                            {
+                                _obj: "delete",
+                                _target: [
+                                    {
+                                        _ref: "layer",
+                                        _id: sampleSOId
+                                    }
+                                ],
+                                _options: { dialogOptions: "dontDisplay" }
+                            }
+                        ], { synchronousExecution: true });
+                    }, { commandName: "删除样本图层" });
+                }
             } catch (error) {
                 console.error('删除样本图层失败:', error);
             } 

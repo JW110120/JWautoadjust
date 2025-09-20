@@ -29,25 +29,14 @@ const MainContainerContent: React.FC = () => {
         useEffect(() => {
             const el = ref.current as any;
             if (!el) return;
-            // 首次渲染确保打开
-            el.open = true;
             const handleClose = () => onClose(item.id);
             el.addEventListener('close', handleClose);
-            // 本地接管自动关闭：先合上，再延迟从列表移除
-            const visibleMs = Math.max(item.timeout || 3000, 2000);
-            const t1 = window.setTimeout(() => {
-                setOpen(false);
-                if (ref.current) (ref.current as any).open = false;
-            }, visibleMs);
-            const t2 = window.setTimeout(() => onClose(item.id), visibleMs + 350);
             return () => {
                 el.removeEventListener('close', handleClose);
-                clearTimeout(t1);
-                clearTimeout(t2);
             };
-        }, [item.id, item.timeout, onClose]);
+        }, [item.id, onClose]);
 
-        // 同步 open 状态到原生属性，避免 React 对自定义元素布尔属性的处理导致无法关闭
+        // 同步 open 状态到原生属性（保留，无副作用）
         useEffect(() => {
             const el = ref.current as any;
             if (!el) return;
@@ -69,12 +58,7 @@ const MainContainerContent: React.FC = () => {
                     <sp-button
                         static-color="white"
                         quiet
-                        onClick={() => {
-                            setOpen(false);
-                            const el = ref.current as any;
-                            if (el) el.open = false;
-                            window.setTimeout(() => onClose(item.id), 250);
-                        }}
+                        onClick={() => onClose(item.id)}
                         aria-label="关闭"
                         title="关闭"
                     >
@@ -89,15 +73,20 @@ const MainContainerContent: React.FC = () => {
         const handler = (e: any) => {
             const detail = e?.detail || {};
             const id = Date.now() + Math.random();
+            const visibleMs = Math.max(detail.timeout || 3000, 2000);
             // 单例：新 Toast 到来时替换旧的，避免出现多个
             setToasts([
                 {
                     id,
                     message: detail.message || '',
                     variant: detail.variant,
-                    timeout: Math.max(detail.timeout || 3000, 2000),
+                    timeout: visibleMs,
                 },
             ]);
+            // 新：在容器层面安排定时移除，完全脱离 sp-toast 自身 timeout 行为
+            window.setTimeout(() => {
+                setToasts((prev) => prev.filter((t) => t.id !== id));
+            }, visibleMs);
         };
         window.addEventListener('show-toast', handler as EventListener);
         return () => window.removeEventListener('show-toast', handler as EventListener);
@@ -172,7 +161,7 @@ const MainContainerContent: React.FC = () => {
                     if (sampleLayerId) return sampleLayerId;
                     const findByName = (layers, name) => {
                         for (const lyr of layers) {
-                            if (lyr.name === name) return lyr.id;
+                            if (lyr.name === name && lyr.kind === 'smartObject') return lyr.id;
                             if (lyr.kind === 'group' && lyr.layers) {
                                 const child = findByName(lyr.layers, name);
                                 if (child) return child;
@@ -255,7 +244,7 @@ const MainContainerContent: React.FC = () => {
                     if (sampleLayerId) return sampleLayerId;
                     const findByName = (layers, name) => {
                         for (const lyr of layers) {
-                            if (lyr.name === name) return lyr.id;
+                            if (lyr.name === name && lyr.kind === 'smartObject') return lyr.id;
                             if (lyr.kind === 'group' && lyr.layers) {
                                 const child = findByName(lyr.layers, name);
                                 if (child) return child;

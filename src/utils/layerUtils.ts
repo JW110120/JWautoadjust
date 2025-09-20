@@ -17,7 +17,29 @@ export const createSampleLayer = async (): Promise<number> => {
     
     await executeAsModal(async () => {
         try {
-            // 1. 合并可见图层
+            // 记录合并前的活动图层ID，用于判断合并是否真正产生了新图层
+            const beforeActive = doc.activeLayers && doc.activeLayers.length > 0 ? doc.activeLayers[0] : null;
+            const beforeActiveId = beforeActive ? beforeActive.id : undefined;
+            //0.新建过渡图层
+            await batchPlay(
+                [
+                    {
+                        _obj: "make",
+                        _target: [
+                            {
+                                _ref: "layer"
+                            }
+                        ],
+                        using: {
+                        _obj: "layer",
+                        name: "临时"
+                    },
+                    }
+                ],
+                { synchronousExecution: true }
+            );
+
+            // 1. 合并可见图层（到新图层）
             await batchPlay(
                 [
                     {
@@ -31,7 +53,15 @@ export const createSampleLayer = async (): Promise<number> => {
                 { synchronousExecution: true }
             );
 
-            // 2. 重命名图层
+            // 合并后校验：若没有产生新图层（如命令不可用），则直接中断，避免误把当前选中图层改名并转为智能对象
+            const afterActive = doc.activeLayers && doc.activeLayers.length > 0 ? doc.activeLayers[0] : null;
+            const afterActiveId = afterActive ? afterActive.id : undefined;
+            const afterIsGroup = (afterActive as any)?.kind === 'group';
+            if (!afterActive || beforeActiveId === afterActiveId || afterIsGroup) {
+                throw new Error('合并可见图层不可用：请确保文档中至少有一个可见的非组图层且未被完全锁定');
+            }
+
+            // 2. 重命名图层（此时目标应为刚生成的像素图层）
             await batchPlay(
                 [
                     {

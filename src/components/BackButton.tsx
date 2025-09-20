@@ -190,6 +190,7 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
 
     return (
         <sp-action-button
+            disabled={isButtonDisabled as any}
             onClick={handleBack}
             title={getButtonTitle()}
             className={`bottom-button ${isButtonDisabled ? 'disabled' : ''}`}

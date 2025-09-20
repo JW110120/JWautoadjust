@@ -19,9 +19,18 @@ const ApplyButton: React.FC<ApplyButtonProps> = ({
 }) => {
     const isButtonDisabled = !(!isRecording && !disabled) || isProcessing;
 
+    const handleClick = (e: React.MouseEvent<HTMLElement>) => {
+        if (isButtonDisabled) return;
+        // 先重置悬停样式，并移除焦点，避免颜色残留
+        handleMouseOut(e);
+        (e.currentTarget as HTMLElement).blur();
+        onClick();
+    };
+
     return (
         <sp-action-button
-            onClick={onClick}
+            disabled={isButtonDisabled as any}
+            onClick={handleClick}
             title={
                 isRecording ? "录制时无法应用" : 
                 disabled ? "没有可应用的调整" : 
