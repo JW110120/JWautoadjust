@@ -1210,6 +1210,16 @@ export const useRecord = () => {
         addNotificationListener(
             ["historyStateChanged"], 
             () => {
+                // 回退中则延迟处理
+                if ((window as any).__JW_isReverting) {
+                    console.log('RecordArea检测到回退中，延迟处理history');
+                    setTimeout(() => {
+                        if (!isProcessing) {
+                            handleDocumentChange();
+                        }
+                    }, 350);
+                    return;
+                }
                 if (!isProcessing) {  
                     // 添加防抖处理
                     const timeoutId = setTimeout(() => {
@@ -1225,6 +1235,16 @@ export const useRecord = () => {
        addNotificationListener(
         ["select"], 
         (event, descriptor) => {
+            // 回退中则延迟处理
+            if ((window as any).__JW_isReverting) {
+                console.log('RecordArea检测到回退中，延迟处理select');
+                setTimeout(() => {
+                    if (descriptor?._target?.[0]?._ref === "document") {
+                        handleDocumentChange();
+                    }
+                }, 350);
+                return;
+            }
             if (descriptor?._target?.[0]?._ref === "document") {
                 console.log('文档选择事件触发');
                 handleDocumentChange();
@@ -1235,6 +1255,12 @@ export const useRecord = () => {
         addNotificationListener(
             ["open", "close", "newDocument"], 
             () => {
+                // 回退中则延迟处理
+                if ((window as any).__JW_isReverting) {
+                    console.log('RecordArea检测到回退中，延迟处理open/close/newDocument');
+                    setTimeout(() => { handleDocumentChange(); }, 350);
+                    return;
+                }
                 console.log('文档已打开/关闭或新建');
                 handleDocumentChange();
             }

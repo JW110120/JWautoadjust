@@ -25,7 +25,7 @@ import { VisibilityOffIcon, VisibilityOnIcon, TransparencyLockIcon, MoveLockIcon
     const [hoveredLayerId, setHoveredLayerId] = useState<number | null>(null);
 
     // 渲染图层树
-    const renderLayerTree = (layers: Layer[], parentPath = '', indent = 0) => {
+    const renderLayerTree = (layers: any[], parentPath = '', indent = 0) => {
         // 创建一个映射来跟踪同名图层
         const visibleLayerCount = {} as Record<string, number>;
         
@@ -557,6 +557,12 @@ const FileArea: React.FC = () => {
             addNotificationListener(
                 ["historyStateChanged"], 
                 () => {
+                    // 回退中则延迟刷新，避免访问无效ID
+                    if ((window as any).__JW_isReverting) {
+                        console.log('FileArea检测到回退中，延迟刷新history');
+                        setTimeout(() => { if (listenerEnabled) refreshLayers(); }, 350);
+                        return;
+                    }
                     if (listenerEnabled) {  // 只在启用时执行
                         console.log('FileArea历史记录变化事件触发');
                         refreshLayers();
@@ -567,6 +573,16 @@ const FileArea: React.FC = () => {
             addNotificationListener(
                 ["select"], 
                 (event, descriptor) => {
+                    // 回退中则延迟刷新，避免访问无效ID
+                    if ((window as any).__JW_isReverting) {
+                        console.log('FileArea检测到回退中，延迟刷新select');
+                        setTimeout(() => {
+                            if (listenerEnabled && descriptor?._target?.[0]?._ref === "document") {
+                                refreshLayers();
+                            }
+                        }, 350);
+                        return;
+                    }
                     if (listenerEnabled && descriptor?._target?.[0]?._ref === "document") {
                         console.log('FileArea文档选择事件触发');
                         refreshLayers();
@@ -577,6 +593,12 @@ const FileArea: React.FC = () => {
             addNotificationListener(
                 ["open", "close", "newDocument"], 
                 () => {
+                    // 回退中则延迟刷新，避免访问无效ID
+                    if ((window as any).__JW_isReverting) {
+                        console.log('FileArea检测到回退中，延迟刷新open/close/newDocument');
+                        setTimeout(() => { if (listenerEnabled) refreshLayers(); }, 350);
+                        return;
+                    }
                     if (listenerEnabled) {
                         console.log('FileArea文档打开/关闭/新建事件触发');
                         refreshLayers();
@@ -719,18 +741,32 @@ const FileArea: React.FC = () => {
                 const { batchPlay } = require("photoshop").action;
                 const SNAPSHOT_NAME = '调整拆分前';
                 await executeAsModal(async () => {
+                    // 先删除同名快照（如果不存在或不支持按名称删除，忽略错误，不中断）
+                    try {
+                        await batchPlay([
+                            {
+                                _obj: 'delete',
+                                _target: [{ _ref: 'snapshotClass', _name: SNAPSHOT_NAME }],
+                                _isCommand: false,
+                            },
+                        ], { synchronousExecution: true });
+                    } catch (eDel) {
+                        console.debug('无同名快照可删或删除不被支持，忽略：', eDel);
+                    }
+
+                    // 再新建同名快照
                     await batchPlay([
                         {
-                            _obj: "make",
-                            _target: [{ _ref: "snapshotClass" }],
-                            from: { _ref: "historyState", _enum: "ordinal", _value: "targetEnum" },
+                            _obj: 'make',
+                            _target: [{ _ref: 'snapshotClass' }],
+                            from: { _ref: 'historyState', _enum: 'ordinal', _value: 'targetEnum' },
                             name: SNAPSHOT_NAME,
-                            using: { _enum: "historyStateSource", _value: "fullDocument" }
-                        }
+                            using: { _enum: 'historyStateSource', _value: 'fullDocument' },
+                        },
                     ], { synchronousExecution: true });
-                }, { commandName: '创建调整拆分前快照' });
+                }, { commandName: '刷新“调整拆分前”快照' });
             } catch (e) {
-                console.warn('创建快照失败（不中断流程）：', e);
+                console.warn('刷新快照失败（不中断流程）：', e);
             }
             
             // 创建一个本地副本，避免状态更新影响处理
@@ -1062,21 +1098,30 @@ const FileArea: React.FC = () => {
 
     // 使用 useMemo 缓存文档图层，但只依赖updateTrigger
     const documentLayers = useMemo(() => {
+        // 将 Photoshop 图层转换为纯数据快照，避免持有 UXP 代理对象
+        const snapshotLayer = (l: any): any => {
+            const safe = (fn: () => any, fallback?: any) => {
+                try { return fn(); } catch { return fallback; }
+            };
+            const id = safe(() => (l._id ?? l.id), null);
+            const name = safe(() => l.name, '');
+            const kind = safe(() => l.kind, '');
+            const bounds = safe(() => {
+                const b = l.bounds;
+                if (!b) return null;
+                const w = typeof b.width === 'number' ? b.width : (typeof b.right === 'number' && typeof b.left === 'number' ? (b.right - b.left) : 0);
+                const h = typeof b.height === 'number' ? b.height : (typeof b.bottom === 'number' && typeof b.top === 'number' ? (b.bottom - b.top) : 0);
+                return { width: Number(w) || 0, height: Number(h) || 0 };
+            }, null);
+            const children = safe(() => Array.isArray(l.layers) ? l.layers.map(snapshotLayer) : [], []);
+            return { _id: id, name, kind, bounds, layers: children };
+        };
+
         try {
             const doc = app.activeDocument;
             if (!doc) return null;
-            
-            // 获取图层时进行基本验证
-            return doc.layers.map(layer => {
-                // 确保返回的图层对象具有必要的属性
-                return {
-                    ...layer,
-                    name: layer.name || '',
-                    kind: layer.kind || '',
-                    bounds: layer.bounds || null,
-                    layers: layer.layers || []
-                };
-            });
+            // 只返回最小快照，避免保留任何 UXP 代理对象
+            return doc.layers.map(snapshotLayer);
         } catch (error) {
             console.error('获取文档图层失败:', error);
             return null;

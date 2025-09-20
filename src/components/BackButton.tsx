@@ -72,7 +72,7 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
             for (let i = historyStates.length - 1; i >= 0; i--) {
                 const state = historyStates[i];
                 if (
-                    (state.snapshot === true || state.type === "snapshot") &&
+                    (state.snapshot === true || state.type === "snapshot" || state.hasOwnProperty('snapshot')) &&
                     typeof state.name === 'string' &&
                     state.name.trim() === SNAPSHOT_NAME
                 ) {
@@ -88,22 +88,36 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
                     showAlert({ message: '快照对象缺少ID，无法返回！' });
                     return;
                 }
+                // 标记正在回退，通知其他区域延迟响应历史事件
+                (window as any).__JW_isReverting = true;
                 await executeAsModal(async () => {
                     await batchPlay(
-                        [{
-                            _obj: "select",
-                            _target: [{ _ref: "historyState", _id: snapshotId }],
-                            _options: { dialogOptions: "dontDisplay" }
-                        }],
-                        { synchronousExecution: true }
+                        [
+                            { _obj: "select", _target: [{ _ref: "historyState", _id: snapshotId }] }
+                        ],
+                        { synchronousExecution: true, modalBehavior: "execute" }
                     );
                 }, { commandName: "返回到调整拆分前快照" });
+
+                // 回退后刷新按钮可用状态
+                await checkSnapshot();
             } else {
                 showAlert({ message: '未找到"调整拆分前"快照' });
             }
         } catch (error) {
             showAlert({ message: `返回快照失败: ${error.message || '未知错误'}` });
+        } finally {
+            // 回退完成后，稍作延迟再清除回退标志，避免其他监听器在回退过程中访问失效的图层ID
+            setTimeout(() => { (window as any).__JW_isReverting = false; }, 300);
         }
+    };
+
+    // 新增：点击时先清理 hover 状态与焦点，避免禁用后 mouseout 不触发导致悬停样式残留
+    const handleClick = (e: React.MouseEvent<HTMLElement>) => {
+        if (isButtonDisabled) return;
+        handleMouseOut(e);
+        (e.currentTarget as HTMLElement).blur();
+        handleBack();
     };
 
     // 监听文档变化
@@ -120,7 +134,7 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
 
         // 使用防抖函数减少频繁调用
         const debouncedCheck = (delay = 100) => {
-            let timeoutId;
+            let timeoutId: any;
             return () => {
                 clearTimeout(timeoutId);
                 timeoutId = setTimeout(() => {
@@ -137,7 +151,7 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
             // 监听文档选择事件
             addNotificationListener(
                 ["select"], 
-                (event, descriptor) => {
+                (event: any, descriptor: any) => {
                     if (descriptor?._target?.[0]?._ref === "document") {
                         debouncedCheckFn();
                     }
@@ -157,11 +171,10 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
                     debouncedCheckFn();
                 }
             ),
-            // 新增：监听快照创建（make）
+            // 监听快照创建（make）
             addNotificationListener(
                 ["make"], 
-                (event, descriptor) => {
-                    // 只处理快照创建
+                (event: any, descriptor: any) => {
                     if (descriptor?._target?.[0]?._ref === "snapshotClass") {
                         debouncedCheckFn();
                     }
@@ -172,7 +185,7 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
         // 清理函数
         return () => {
             isMounted = false;
-            listeners.forEach(listener => {
+            listeners.forEach((listener: any) => {
                 if (listener?.remove) {
                     listener.remove();
                 }
@@ -191,7 +204,7 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
     return (
         <sp-action-button
             disabled={isButtonDisabled as any}
-            onClick={handleBack}
+            onClick={handleClick}
             title={getButtonTitle()}
             className={`bottom-button ${isButtonDisabled ? 'disabled' : ''}`}
             style={getButtonStyle(isButtonDisabled)}

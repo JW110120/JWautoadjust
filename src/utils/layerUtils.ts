@@ -85,35 +85,54 @@ export const createSampleLayer = async (): Promise<number> => {
                 { synchronousExecution: true }
             );
 
-            // 3. 置顶图层
-            const currentLayers = doc.layers;
+            // 3. 置顶图层（多次“置顶”逐级上移，直至文档最顶层）
             const targetLayer = doc.activeLayers[0];
-            const isAlreadyOnTop = targetLayer && currentLayers.length > 0 && targetLayer.id === currentLayers[0].id;
-            
-            if (!isAlreadyOnTop) {
-                await batchPlay(
-                    [
-                        {
-                            _obj: "move",
-                            _target: [
-                                {
+            if (targetLayer) {
+                // 计算当前图层所处的组层级深度，以及是否已经在其直接父容器的最上方
+                const getDepthAndTopStatus = (lyr: any) => {
+                    let depth = 0;
+                    let isTop = false;
+                    let parent: any = lyr.parent;
+
+                    if (parent && parent.kind === 'group') {
+                        isTop = parent.layers && parent.layers.length > 0 && parent.layers[0].id === lyr.id;
+                        while (parent && parent.kind === 'group') {
+                            depth += 1;
+                            parent = parent.parent;
+                        }
+                    } else {
+                        // 父级为文档根
+                        isTop = doc.layers && doc.layers.length > 0 && doc.layers[0].id === lyr.id;
+                    }
+                    return { depth, isTop };
+                };
+
+                const { depth, isTop } = getDepthAndTopStatus(targetLayer);
+                const moveTimes = depth + (isTop ? 0 : 1);
+
+                for (let i = 0; i < moveTimes; i++) {
+                    await batchPlay(
+                        [
+                            {
+                                _obj: "move",
+                                _target: [
+                                    {
+                                        _ref: "layer",
+                                        _enum: "ordinal",
+                                        _value: "targetEnum"
+                                    }
+                                ],
+                                to: {
                                     _ref: "layer",
                                     _enum: "ordinal",
-                                    _value: "targetEnum"
-                                }
-                            ],
-                            to: {
-                                _ref: "layer",
-                                _enum: "ordinal",
-                                _value: "front"
-                            },
-                            _options: {
-                                dialogOptions: "dontDisplay"
+                                    _value: "front"
+                                },
+                                _options: { dialogOptions: "dontDisplay" }
                             }
-                        }
-                    ],
-                    { synchronousExecution: true }
-                );
+                        ],
+                        { synchronousExecution: true }
+                    );
+                }
             }
 
             // 4. 转换为智能对象
