@@ -5,11 +5,10 @@ import { useRecord } from './RecordArea';
 import FileArea from './FileArea';
 import InfoPlane from './components/InfoPlane';
 import { DeleteButton } from './components/DeleteButton';
-import { ToastContainer, ToastQueue } from '@adobe/react-spectrum';
-import SnapshotButton from './components/SnapshotButton';
 import BackButton from './components/BackButton';
 import RecordButton from './components/RecordButton';
 import ApplyButton from './components/ApplyButton';
+import { CheckmarkCircleIcon, CloseIcon, ErrorCircleIcon } from './styles/Icons';
 
 const MainContainer: React.FC = () => {
     return <MainContainerContent />;
@@ -18,6 +17,92 @@ const MainContainer: React.FC = () => {
 const MainContainerContent: React.FC = () => {
     const { LayerTreeComponent, applyAdjustments, progress, isProcessing } = FileArea();
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
+
+    // Toast 管理：监听全局事件并渲染可关闭的 Spectrum Web Components sp-toast
+    type ToastMsg = { id: number; message: string; variant?: string; timeout?: number };
+    const [toasts, setToasts] = useState<ToastMsg[]>([]);
+    const removeToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+    const ToastView: React.FC<{ item: ToastMsg; onClose: (id: number) => void }> = ({ item, onClose }) => {
+        const ref = useRef<any>(null);
+        const [open, setOpen] = useState(true);
+        useEffect(() => {
+            const el = ref.current as any;
+            if (!el) return;
+            // 首次渲染确保打开
+            el.open = true;
+            const handleClose = () => onClose(item.id);
+            el.addEventListener('close', handleClose);
+            // 本地接管自动关闭：先合上，再延迟从列表移除
+            const visibleMs = Math.max(item.timeout || 3000, 2000);
+            const t1 = window.setTimeout(() => {
+                setOpen(false);
+                if (ref.current) (ref.current as any).open = false;
+            }, visibleMs);
+            const t2 = window.setTimeout(() => onClose(item.id), visibleMs + 350);
+            return () => {
+                el.removeEventListener('close', handleClose);
+                clearTimeout(t1);
+                clearTimeout(t2);
+            };
+        }, [item.id, item.timeout, onClose]);
+
+        // 同步 open 状态到原生属性，避免 React 对自定义元素布尔属性的处理导致无法关闭
+        useEffect(() => {
+            const el = ref.current as any;
+            if (!el) return;
+            el.open = open;
+        }, [open]);
+
+        return (
+            <sp-toast ref={ref} timeout={Math.max(item.timeout || 3000, 2000)} variant={item.variant as any}>
+                {/* 左侧 icon：根据变体切换 */}
+                <span slot="icon" aria-hidden="true" style={{ display: 'inline-flex' }}>
+                    {item.variant === 'positive' ? <CheckmarkCircleIcon /> : null}
+                    {item.variant === 'negative' ? <ErrorCircleIcon /> : null}
+                </span>
+                {/* 文本包裹，保留足够的左间距 */}
+                <span className="toast-message-text">{item.message}</span>
+                {/* 关闭分隔线 + 图标按钮，使用单一 action 槽包装器，避免布局错乱 */}
+                <span slot="action" className="toast-action-wrap">
+                    <span className="toast-divider" aria-hidden="true" />
+                    <sp-button
+                        static-color="white"
+                        quiet
+                        onClick={() => {
+                            setOpen(false);
+                            const el = ref.current as any;
+                            if (el) el.open = false;
+                            window.setTimeout(() => onClose(item.id), 250);
+                        }}
+                        aria-label="关闭"
+                        title="关闭"
+                    >
+                        <CloseIcon />
+                    </sp-button>
+                </span>
+            </sp-toast>
+        );
+    };
+
+    useEffect(() => {
+        const handler = (e: any) => {
+            const detail = e?.detail || {};
+            const id = Date.now() + Math.random();
+            // 单例：新 Toast 到来时替换旧的，避免出现多个
+            setToasts([
+                {
+                    id,
+                    message: detail.message || '',
+                    variant: detail.variant,
+                    timeout: Math.max(detail.timeout || 3000, 2000),
+                },
+            ]);
+        };
+        window.addEventListener('show-toast', handler as EventListener);
+        return () => window.removeEventListener('show-toast', handler as EventListener);
+    }, []);
+
     const { 
         isRecording, 
         startRecording, 
@@ -53,6 +138,7 @@ const MainContainerContent: React.FC = () => {
             }
         } catch (error) {
             console.error('录制失败:', error);
+            const { showAlert } = require("photoshop").core;
             showAlert({ message: `录制失败: ${error.message}` });
         }
     };
@@ -239,7 +325,12 @@ const MainContainerContent: React.FC = () => {
 
     return (
         <div className="main-container">
-            <ToastContainer placement="top" />
+            {/* 顶部基于 Spectrum Web Components 的 Toast 区域 */}
+            <div className="toast-region" role="region" aria-label="Toast Notifications">
+                {toasts.map((t) => (
+                    <ToastView key={t.id} item={t} onClose={removeToast} />
+                ))}
+            </div>
             
             {/* 左侧部分 */}
             <div className="section-common">
@@ -248,7 +339,7 @@ const MainContainerContent: React.FC = () => {
             </div>
             <div className="table-content" onClick={(e) => {
                 // 如果点击的不是li元素或li的子元素，则取消选择
-                const clickedElement = e.target as HTMLElement;
+                const clickedElement = (e.target as HTMLElement);
                 const isListItem = clickedElement.tagName === 'LI' || clickedElement.closest('li');
                 if (!isListItem) {
                     handleBlankAreaClick();
@@ -377,7 +468,6 @@ const MainContainerContent: React.FC = () => {
             </div>
             <div className="bottom-buttons-section">
                     <BackButton isRecording={isRecording} />
-                    <SnapshotButton isRecording={isRecording} />
                     <ApplyButton 
                         onClick={applyAdjustments}
                         isRecording={isRecording}

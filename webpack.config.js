@@ -22,7 +22,11 @@ function createConfig(mode, entry, output, plugins) {
             ],
         },
 
-        resolve: { extensions: ['.tsx', '.ts', '.jsx', '.js', '.json'] },
+        resolve: {
+            extensions: ['.tsx', '.ts', '.jsx', '.js', '.json'],
+            // 强制选择默认导出，避免选择*.dev.js 开发入口，修复 UXP 环境下模块缺失与 lit 导出不匹配的问题
+            conditionNames: ['import', 'module', 'browser', 'default']
+        },
         externals: {
             _require: "require",
             photoshop: 'commonjs photoshop',
@@ -31,7 +35,14 @@ function createConfig(mode, entry, output, plugins) {
         },
         output: {
             filename: '[name].js',
+            chunkFilename: '[name].js',
+            publicPath: './',
             path: output
+        },
+
+        optimization: {
+            splitChunks: false,
+            runtimeChunk: false,
         },
 
         plugins,
@@ -41,8 +52,8 @@ function createConfig(mode, entry, output, plugins) {
 module.exports = (env, argv) => {
     const panelOutput = path.join(dist, `${panelName}.unsigned`);
     const uxpPanelConfig = createConfig(argv.mode, 
-        // 修改入口名称
-        { bundle: "./src/index.tsx" }, 
+        // 修改入口名称：确保 polyfill 最先执行
+        { bundle: ["./src/polyfills/dom-treewalker.ts", "./src/index.tsx"] }, 
         path.join(dist, panelName), 
         [
             new webpack.ProvidePlugin({
@@ -51,8 +62,9 @@ module.exports = (env, argv) => {
             new HtmlWebpackPlugin({
                 template: path.join(__dirname, 'src', 'index.html'),
                 filename: 'index.html',
-                // 修改对应的 chunks 名称
+                // 只注入我们的入口 chunk，避免额外 vendor 名称注入
                 chunks: ['bundle'],
+                inject: 'body'
             }),
         new copyWebpackPlugin({
             patterns: [

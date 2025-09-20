@@ -2,7 +2,6 @@ import React, { useState, useContext, useEffect, useCallback, useMemo } from 're
 import { useScrollPosition } from './utils/scrollUtils';
 import { app, Layer} from 'photoshop';
 import { AdjustmentStepsContext } from './contexts/AdjustmentStepsContext';
-import { ToastQueue } from '@adobe/react-spectrum';
 import { DocumentInfoContext } from './contexts/DocumentInfoContext';
 import { useProcessing } from './contexts/ProcessingContext';
 import { VisibilityOffIcon, VisibilityOnIcon, TransparencyLockIcon, MoveLockIcon, LockClosedIcon, LockOpenIcon, ExpandRightIcon, ExpandDownIcon, FolderClosedIcon, FolderOpenIcon, BackgroundLockIcon } from './styles/Icons';
@@ -118,7 +117,7 @@ import { VisibilityOffIcon, VisibilityOnIcon, TransparencyLockIcon, MoveLockIcon
                         <input 
                             type="checkbox" 
                             checked={selectedLayerPaths[`${currentPath}_${index}`] === true}
-                            onClick={(e) => {
+                            onChange={(e) => {
                                 e.stopPropagation();
                                 handleLayerCheckboxChange(layer, currentPath, index, e, true);
                             }}
@@ -748,10 +747,10 @@ const FileArea: React.FC = () => {
             } 
             
             // 使用 ToastQueue 显示成功通知
-            ToastQueue.positive('处理完成', {
-                timeout: 3000
-            });
-            
+            // 改为派发自定义事件，由 MainContainer 用 sp-toast 展示
+            window.dispatchEvent(new CustomEvent('show-toast', {
+                detail: { message: '处理完成', variant: 'positive', timeout: 6000 }
+            }));
         } catch (error) {
             console.error('应用调整失败:', error);
             const { showAlert } = require("photoshop").core;

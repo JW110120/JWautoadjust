@@ -1,3 +1,6 @@
+import './polyfills/css-adopted-style';
+import './polyfills/mutation-observer';
+import './polyfills/dom-treewalker';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import MainContainer from './MainContainer';
@@ -8,6 +11,8 @@ import { ProcessingProvider } from './contexts/ProcessingContext';
 import { initializeTheme } from './styles/theme';
 import './styles/styles.css';
 import { defaultTheme, Provider } from '@adobe/react-spectrum';
+import '@spectrum-web-components/toast/sp-toast.js';
+import '@spectrum-web-components/button/sp-button.js';
 
 // 初始化主题
 initializeTheme();

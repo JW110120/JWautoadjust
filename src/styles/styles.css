@@ -587,7 +587,100 @@ html,body {
 .layer-status-icons sp-action-button.icon-button.background-lock.active:hover {
   color: var(--purple, #9b59b6) !important;
 }
-/* 优化 React Spectrum Toast 的视觉（顶部放置）：图标居中、减少空白 */
+/* 顶部 Toast 堆叠区域 */
+.toast-region {
+  position: fixed;
+  right: 2px;
+  top: 2px;
+  display: flex;
+  height: 40px;
+  flex-direction: row;
+  z-index: 1300; /* 高于分割线/底部条 */
+  pointer-events: none; /* 区域允许穿透，由 toast 自身接管交互 */
+}
+
+.toast-region sp-toast {
+  pointer-events: auto; /* 恢复交互 */
+  max-width: 420px; /* 控制上限，避免过长 */
+}
+
+/* 统一 toast 内边距、行高与比例 */
+sp-toast {
+  --spectrum-toast-spacing-vertical: 8px;
+  --spectrum-toast-spacing-horizontal: 14px;
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* 正向(positive)配色 - 纯色绿底，白字白图标 */
+sp-toast[variant="positive"] {
+  --spectrum-toast-background-color: #237a33;
+  --spectrum-toast-content-color: #ffffff;
+  backdrop-filter: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  background: var(--spectrum-toast-background-color);
+}
+
+/* 其它变体边框/阴影 */
+sp-toast[variant="negative"], sp-toast[variant="warning"], sp-toast[variant="info"] {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+
+/* 左侧图标槽位，保持与文字基线对齐 */
+sp-toast [slot="icon"] {
+  display: inline-flex;
+  height: 100%;
+  align-items: center; 
+  margin-left: 10px; /* 图标与文字间距更大一些 */
+}
+
+/* 文本进一步与左边图标拉开距离，且不换行 */
+.toast-message-text {
+  display: inline-flex;
+  margin: 0 10px;
+  height: 100%;
+  line-height: 100%;
+  align-items: center;
+}
+
+/* 右侧操作区域：加分隔线与内边距（单一包装器） */
+.toast-action-wrap {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+}
+
+.toast-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255,255,255,0.55);
+  margin-right: 8px;
+  border-radius: 1px;
+}
+
+/* Action 按钮（关闭）样式与尺寸 */
+.toast-action-wrap sp-button {
+  --spectrum-button-height: 22px;
+  --spectrum-alias-component-text-size-default: 16px;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 2px 2px;
+  margin-right: 10px;
+}
+
+/* 暗色下的图标可见性 */
+.spectrum-Toast .spectrum-Icon, sp-toast .spectrum-Icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 顶部容器间距更紧凑 */
+.spectrum-ToastContainer--top, sp-toast-container[placement="top"] {
+  top: 8px !important;
+}
 .spectrum-Toast, sp-toast, [role="alert"] .spectrum-Toast {
   align-items: center;
   padding-top: 6px !important;
@@ -600,8 +693,4 @@ html,body {
 }
 .spectrum-Toast .spectrum-Toast-content, sp-toast .spectrum-Toast-content {
   line-height: 18px;
-}
-/* 容器顶部间距更紧凑 */
-.spectrum-ToastContainer--top, sp-toast-container[placement="top"] {
-  top: 8px !important;
 }
