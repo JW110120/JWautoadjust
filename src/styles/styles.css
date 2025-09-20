@@ -459,6 +459,12 @@ html,body {
 .layer-name.hidden.locked,
 .layer-name.locked.hidden { color: var(--danger); opacity: 1; }
 
+/* 背景图层名：紫色（优先级覆盖，且仅当未处于红/黄态时生效）*/
+.layer-item .layer-name.background:not(.locked):not(.hidden):not(.hidden-only) {
+  color: var(--purple, #9b59b6) !important;
+  opacity: 1;
+}
+
 /* 组头图标与文件夹图标统一颜色 */
 .group-header .icon { color: var(--icon); display: inline-flex; align-items: center; justify-content: center; }
 .group-header .icon svg { width: 18px; height: 18px; fill: currentColor; }
@@ -580,4 +586,22 @@ html,body {
 .layer-status-icons sp-action-button.icon-button.background-lock.active,
 .layer-status-icons sp-action-button.icon-button.background-lock.active:hover {
   color: var(--purple, #9b59b6) !important;
+}
+/* 优化 React Spectrum Toast 的视觉（顶部放置）：图标居中、减少空白 */
+.spectrum-Toast, sp-toast, [role="alert"] .spectrum-Toast {
+  align-items: center;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+.spectrum-Toast .spectrum-Icon, sp-toast .spectrum-Icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.spectrum-Toast .spectrum-Toast-content, sp-toast .spectrum-Toast-content {
+  line-height: 18px;
+}
+/* 容器顶部间距更紧凑 */
+.spectrum-ToastContainer--top, sp-toast-container[placement="top"] {
+  top: 8px !important;
 }

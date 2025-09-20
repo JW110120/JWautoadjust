@@ -74,6 +74,22 @@ export const useRecord = () => {
             const doc = app.activeDocument;
             if (!doc || !layerId) return;
 
+            // 递归判断给定 id 的图层是否仍然存在
+            const existsById = (layers, id) => {
+                if (!layers) return false;
+                for (const lyr of layers) {
+                    if (lyr.id === id) return true;
+                    if (lyr.kind === 'group' && lyr.layers && lyr.layers.length) {
+                        if (existsById(lyr.layers, id)) return true;
+                    }
+                }
+                return false;
+            };
+            if (!existsById(doc.layers, layerId)) {
+                // 录制过程中图层可能被删，静默跳过同步
+                return;
+            }
+
             const { batchPlay } = require("photoshop").action;
             
             // 获取智能滤镜信息
@@ -107,8 +123,13 @@ export const useRecord = () => {
             setAdjustmentSteps(newSteps, newDisplayNames);
         } catch (error) {
             console.error('同步调整图层失败:', error);
-            const { showAlert } = require("photoshop").core;
-            showAlert({ message: `同步调整图层失败: ${error.message}` });
+            // 录制中且常见“get 不可用/未找到”错误时静默处理，避免弹窗打断
+            const msg = String(error?.message || '').toLowerCase();
+            const shouldSilent = isRecordingRef?.current && (msg.includes('not available') || msg.includes('不可用') || msg.includes('not found') || msg.includes('get'));
+            if (!shouldSilent) {
+                const { showAlert } = require("photoshop").core;
+                showAlert({ message: `同步调整图层失败: ${error.message}` });
+            }
         }
     };
 

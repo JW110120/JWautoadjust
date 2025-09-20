@@ -39,7 +39,8 @@ const MainContainerContent: React.FC = () => {
         getItemClass, // 新增导入
         handleDragEnd,
         handleContainerDragOver,
-        containerRef
+        containerRef,
+        sampleLayerId
     } = useRecord();
 
     const handleRecordClick = async () => {
@@ -80,23 +81,35 @@ const MainContainerContent: React.FC = () => {
                 const { batchPlay } = require("photoshop").action;
                 
                 const doc = app.activeDocument;
-                const sampleLayer = doc.layers.find(layer => 
-                    layer.name === "样本图层" && 
-                    layer.kind === "smartObject"
-                );
+                // 优先使用上下文中的样本图层ID，找不到再回退到名称递归查找
+                const resolveSampleLayerId = () => {
+                    if (sampleLayerId) return sampleLayerId;
+                    const findByName = (layers, name) => {
+                        for (const lyr of layers) {
+                            if (lyr.name === name) return lyr.id;
+                            if (lyr.kind === 'group' && lyr.layers) {
+                                const child = findByName(lyr.layers, name);
+                                if (child) return child;
+                            }
+                        }
+                        return null;
+                    };
+                    return findByName(doc.layers, '样本图层');
+                };
+                const targetId = resolveSampleLayerId();
     
-                if (sampleLayer) {
+                if (targetId) {
                     await executeAsModal(async () => {
                         await batchPlay([{
                             _obj: "select",
-                            _target: [{ _ref: "layer", _id: sampleLayer.id }],
+                            _target: [{ _ref: "layer", _id: targetId }],
                             makeVisible: true,
                             _options: { dialogOptions: "dontDisplay" }
                         }], { synchronousExecution: true });
     
                         const result = await batchPlay([{
                             _obj: "get",
-                            _target: [{ _ref: "layer", _id: sampleLayer.id }],
+                            _target: [{ _ref: "layer", _id: targetId }],
                             _options: { dialogOptions: "dontDisplay" }
                         }], { synchronousExecution: true });
     
@@ -152,23 +165,34 @@ const MainContainerContent: React.FC = () => {
                 const { batchPlay } = require("photoshop").action;
                 
                 const doc = app.activeDocument;
-                const sampleLayer = doc.layers.find(layer => 
-                    layer.name === "样本图层" && 
-                    layer.kind === "smartObject"
-                );
+                const resolveSampleLayerId = () => {
+                    if (sampleLayerId) return sampleLayerId;
+                    const findByName = (layers, name) => {
+                        for (const lyr of layers) {
+                            if (lyr.name === name) return lyr.id;
+                            if (lyr.kind === 'group' && lyr.layers) {
+                                const child = findByName(lyr.layers, name);
+                                if (child) return child;
+                            }
+                        }
+                        return null;
+                    };
+                    return findByName(doc.layers, '样本图层');
+                };
+                const targetId = resolveSampleLayerId();
     
-                if (sampleLayer) {
+                if (targetId) {
                     await executeAsModal(async () => {
                         await batchPlay([{
                             _obj: "select",
-                            _target: [{ _ref: "layer", _id: sampleLayer.id }],
+                            _target: [{ _ref: "layer", _id: targetId }],
                             makeVisible: true,
                             _options: { dialogOptions: "dontDisplay" }
                         }], { synchronousExecution: true });
     
                         const result = await batchPlay([{
                             _obj: "get",
-                            _target: [{ _ref: "layer", _id: sampleLayer.id }],
+                            _target: [{ _ref: "layer", _id: targetId }],
                             _options: { dialogOptions: "dontDisplay" }
                         }], { synchronousExecution: true });
     
@@ -215,7 +239,7 @@ const MainContainerContent: React.FC = () => {
 
     return (
         <div className="main-container">
-            <ToastContainer placement="bottom" />
+            <ToastContainer placement="top" />
             
             {/* 左侧部分 */}
             <div className="section-common">

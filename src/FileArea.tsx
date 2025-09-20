@@ -101,7 +101,8 @@ import { VisibilityOffIcon, VisibilityOnIcon, TransparencyLockIcon, MoveLockIcon
                 const isHidden = state.visible === false;
                 const isLockedAny = !!(state.protectAll || state.protectPosition || state.protectTransparency);
                 const hiddenOnly = isHidden && !isLockedAny;
-                const nameClass = `layer-name ${selectedLayerPaths[`${currentPath}_${index}`] ? 'selected' : ''} ${isHidden ? 'hidden' : ''} ${isLockedAny ? 'locked' : ''} ${hiddenOnly ? 'hidden-only' : ''} ${state.isBackground ? 'background' : ''}`;
+                // 当为背景图层时，不叠加 locked/hidden/hidden-only，避免颜色规则被覆盖
+                const nameClass = `layer-name ${selectedLayerPaths[`${currentPath}_${index}`] ? 'selected' : ''} ${state.isBackground ? '' : (isHidden ? 'hidden' : '')} ${state.isBackground ? '' : (isLockedAny ? 'locked' : '')} ${state.isBackground ? '' : (hiddenOnly ? 'hidden-only' : '')} ${state.isBackground ? 'background' : ''}`;
                 const isHoveringThis = hoveredLayerId === layer._id;
                 
                 // 检查是否为背景图层（优先使用状态中的标记）
@@ -117,9 +118,9 @@ import { VisibilityOffIcon, VisibilityOnIcon, TransparencyLockIcon, MoveLockIcon
                         <input 
                             type="checkbox" 
                             checked={selectedLayerPaths[`${currentPath}_${index}`] === true}
-                            onChange={(e) => {
+                            onClick={(e) => {
                                 e.stopPropagation();
-                                handleLayerCheckboxChange(layer, currentPath, index, e);
+                                handleLayerCheckboxChange(layer, currentPath, index, e, true);
                             }}
                             className="layer-checkbox"
                         />
@@ -769,9 +770,58 @@ const FileArea: React.FC = () => {
     }, []);
 
     // 处理图层选择状态变化（支持多选）
-    const handleLayerCheckboxChange = useCallback((layer: Layer, currentPath: string, index: number, event?: React.MouseEvent) => {
+    const handleLayerCheckboxChange = useCallback((layer: Layer, currentPath: string, index: number, event?: React.MouseEvent, isCheckbox?: boolean) => {
         const layerIdentifier = `${currentPath}_${index}`;
-        
+
+        // 情况A：来自checkbox且没有按住任何修饰键 => 仅切换该项勾选，不清空其它勾选
+        if (isCheckbox && event && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+            const newSelectedIndices = new Set(selectedLayerIndices);
+
+            // 如果当前是单选状态，先把单选加入多选集合（保持已有选择不丢失）
+            if (selectedLayerIndex !== null && selectedLayerIndices.size === 0 && selectedLayerIndex !== index) {
+                newSelectedIndices.add(selectedLayerIndex);
+            }
+
+            const isCurrentlySelected = !!selectedLayerPaths[layerIdentifier];
+            if (isCurrentlySelected) {
+                // 取消该项
+                newSelectedIndices.delete(index);
+                setSelectedLayerPaths(prev => ({ ...prev, [layerIdentifier]: false }));
+                setSelectedLayers(prev => prev.filter(l => l.identifier !== layerIdentifier));
+            } else {
+                // 勾选该项
+                newSelectedIndices.add(index);
+                setSelectedLayerPaths(prev => ({ ...prev, [layerIdentifier]: true }));
+                const layerInfo = {
+                    ...layer,
+                    identifier: layerIdentifier,
+                    name: layer.name,
+                    _id: layer._id,
+                    id: layer.id,
+                    bounds: layer.bounds,
+                    parent: layer.parent
+                } as any;
+                setSelectedLayers(prev => {
+                    const exists = prev.find(l => l.identifier === layerIdentifier);
+                    return exists ? prev : [...prev, layerInfo];
+                });
+            }
+
+            setSelectedLayerIndices(newSelectedIndices);
+            setLastClickedLayerIndex(index);
+            // 根据集合大小与单选状态进行收敛
+            if (newSelectedIndices.size === 0) {
+                setSelectedLayerIndex(null);
+            } else if (newSelectedIndices.size === 1) {
+                const remaining = Array.from(newSelectedIndices)[0];
+                setSelectedLayerIndex(remaining);
+                setSelectedLayerIndices(new Set());
+            } else {
+                setSelectedLayerIndex(null);
+            }
+            return;
+        }
+
         if (event && (event.ctrlKey || event.metaKey)) {
             // Ctrl+点击：切换选中状态
             if (selectedLayerIndex === index && selectedLayerIndices.size === 0) {
@@ -847,8 +897,8 @@ const FileArea: React.FC = () => {
             const end = Math.max(lastClickedLayerIndex, index);
             
             // 需要获取所有可见图层的索引映射
-            const allVisibleLayers = [];
-            const collectVisibleLayers = (layers, parentPath = '') => {
+            const allVisibleLayers: Array<{ layer: Layer; path: string; index: number }> = [] as any;
+            const collectVisibleLayers = (layers: any[], parentPath = '') => {
                 layers.forEach((layer, idx) => {
                     const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
                     if (layer.kind === 'pixel') {
@@ -863,11 +913,11 @@ const FileArea: React.FC = () => {
             };
             
             if (documentLayers) {
-                collectVisibleLayers(documentLayers);
+                collectVisibleLayers(documentLayers as any);
             }
             
-            for (let i = start; i <= end && i < allVisibleLayers.length; i++) {
-                const layerData = allVisibleLayers[i];
+            for (let i = start; i <= end && i < (allVisibleLayers as any).length; i++) {
+                const layerData = (allVisibleLayers as any)[i];
                 if (layerData) {
                     const layerId = `${layerData.path}_${layerData.index}`;
                     newSelectedIndices.add(i);
@@ -884,7 +934,7 @@ const FileArea: React.FC = () => {
                         id: layerData.layer.id,
                         bounds: layerData.layer.bounds,
                         parent: layerData.layer.parent
-                    };
+                    } as any;
                     
                     setSelectedLayers(prev => {
                         const exists = prev.find(l => l.identifier === layerId);
@@ -915,14 +965,18 @@ const FileArea: React.FC = () => {
                     id: layer.id,
                     bounds: layer.bounds,
                     parent: layer.parent
-                };
+                } as any;
                 setSelectedLayers([layerInfo]);
-                setLastClickedLayerIndex(index);
             } else {
-                // 单选状态的普通点击
-                const isSelected = !selectedLayerPaths[layerIdentifier];
-                
-                if (isSelected) {
+                // 当前是单选或未选：切换到该项
+                const isCurrentlySelected = selectedLayerIndex === index;
+                if (isCurrentlySelected) {
+                    // 取消选择
+                    setSelectedLayerIndex(null);
+                    setSelectedLayerPaths(prev => ({ ...prev, [layerIdentifier]: false }));
+                    setSelectedLayers(prev => prev.filter(l => l.identifier !== layerIdentifier));
+                } else {
+                    // 切换为该项
                     setSelectedLayerIndex(index);
                     setSelectedLayerPaths({ [layerIdentifier]: true });
                     const layerInfo = {
@@ -933,15 +987,11 @@ const FileArea: React.FC = () => {
                         id: layer.id,
                         bounds: layer.bounds,
                         parent: layer.parent
-                    };
+                    } as any;
                     setSelectedLayers([layerInfo]);
-                } else {
-                    setSelectedLayerIndex(null);
-                    setSelectedLayerPaths({});
-                    setSelectedLayers([]);
                 }
-                setLastClickedLayerIndex(index);
             }
+            setLastClickedLayerIndex(index);
         }
     }, [selectedLayerPaths, selectedLayerIndices, selectedLayerIndex, lastClickedLayerIndex, documentLayers]);
 
