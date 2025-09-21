@@ -123,6 +123,19 @@ export const DocumentInfoProvider: React.FC<{ children: React.ReactNode }> = ({ 
         };
     }, [debouncedUpdateDocumentInfo]);
 
+    // 监听回退完成事件，立即触发一次信息刷新，避免等待定时器
+    useEffect(() => {
+        const handler = () => {
+            try {
+                debouncedUpdateDocumentInfo();
+            } catch (e) {
+                // 忽略单次失败
+            }
+        };
+        window.addEventListener('JW_AFTER_REVERT', handler as any);
+        return () => window.removeEventListener('JW_AFTER_REVERT', handler as any);
+    }, [debouncedUpdateDocumentInfo]);
+
     return (
         <DocumentInfoContext.Provider value={{ documentInfo, setDocumentInfo }}> 
             {children}

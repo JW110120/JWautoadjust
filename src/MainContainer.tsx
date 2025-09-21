@@ -9,6 +9,7 @@ import BackButton from './components/BackButton';
 import RecordButton from './components/RecordButton';
 import ApplyButton from './components/ApplyButton';
 import { CheckmarkCircleIcon, CloseIcon, ErrorCircleIcon } from './styles/Icons';
+import { useRecordContext } from './contexts/RecordContext';
 
 const MainContainer: React.FC = () => {
     return <MainContainerContent />;
@@ -17,6 +18,7 @@ const MainContainer: React.FC = () => {
 const MainContainerContent: React.FC = () => {
     const { LayerTreeComponent, applyAdjustments, progress, isProcessing } = FileArea();
     const { adjustmentSteps, displayNames, deleteAdjustmentStep } = useContext(AdjustmentStepsContext);
+    const { currentSampleTs } = useRecordContext();
 
     // Toast 管理：监听全局事件并渲染可关闭的 Spectrum Web Components sp-toast
     type ToastMsg = { id: number; message: string; variant?: string; timeout?: number };
@@ -156,20 +158,34 @@ const MainContainerContent: React.FC = () => {
                 const { batchPlay } = require("photoshop").action;
                 
                 const doc = app.activeDocument;
-                // 优先使用上下文中的样本图层ID，找不到再回退到名称递归查找
+                // 优先使用上下文中的样本图层ID；否则优先精确命中“样本图层 <ts>”，再退化为前缀 startsWith('样本图层')
                 const resolveSampleLayerId = () => {
                     if (sampleLayerId) return sampleLayerId;
-                    const findByName = (layers, name) => {
+                    const preferName = currentSampleTs ? `样本图层 ${currentSampleTs}` : null;
+
+                    const findId = (layers: any[], predicate: (n: string, lyr: any) => boolean): number | null => {
                         for (const lyr of layers) {
-                            if (lyr.name === name && lyr.kind === 'smartObject') return lyr.id;
-                            if (lyr.kind === 'group' && lyr.layers) {
-                                const child = findByName(lyr.layers, name);
-                                if (child) return child;
-                            }
+                            try {
+                                const name = (lyr as any)?.name || '';
+                                const id = (lyr as any)?.id ?? (lyr as any)?._id ?? null;
+                                let isSmart = true;
+                                try { isSmart = ((lyr as any)?.kind === 'smartObject'); } catch { isSmart = true; }
+                                if (id && isSmart && predicate(name, lyr)) return id;
+                                const children = (() => { try { return (lyr as any)?.layers || []; } catch { return []; } })();
+                                if (children && children.length) {
+                                    const child = findId(children, predicate);
+                                    if (child) return child;
+                                }
+                            } catch {}
                         }
                         return null;
                     };
-                    return findByName(doc.layers, '样本图层');
+
+                    if (preferName) {
+                        const exact = findId((doc as any).layers as any, (n) => n === preferName);
+                        if (exact) return exact;
+                    }
+                    return findId((doc as any).layers as any, (n) => typeof n === 'string' && n.startsWith('样本图层'));
                 };
                 const targetId = resolveSampleLayerId();
     
@@ -242,17 +258,31 @@ const MainContainerContent: React.FC = () => {
                 const doc = app.activeDocument;
                 const resolveSampleLayerId = () => {
                     if (sampleLayerId) return sampleLayerId;
-                    const findByName = (layers, name) => {
+                    const preferName = currentSampleTs ? `样本图层 ${currentSampleTs}` : null;
+
+                    const findId = (layers: any[], predicate: (n: string, lyr: any) => boolean): number | null => {
                         for (const lyr of layers) {
-                            if (lyr.name === name && lyr.kind === 'smartObject') return lyr.id;
-                            if (lyr.kind === 'group' && lyr.layers) {
-                                const child = findByName(lyr.layers, name);
-                                if (child) return child;
-                            }
+                            try {
+                                const name = (lyr as any)?.name || '';
+                                const id = (lyr as any)?.id ?? (lyr as any)?._id ?? null;
+                                let isSmart = true;
+                                try { isSmart = ((lyr as any)?.kind === 'smartObject'); } catch { isSmart = true; }
+                                if (id && isSmart && predicate(name, lyr)) return id;
+                                const children = (() => { try { return (lyr as any)?.layers || []; } catch { return []; } })();
+                                if (children && children.length) {
+                                    const child = findId(children, predicate);
+                                    if (child) return child;
+                                }
+                            } catch {}
                         }
                         return null;
                     };
-                    return findByName(doc.layers, '样本图层');
+
+                    if (preferName) {
+                        const exact = findId((doc as any).layers as any, (n) => n === preferName);
+                        if (exact) return exact;
+                    }
+                    return findId((doc as any).layers as any, (n) => typeof n === 'string' && n.startsWith('样本图层'));
                 };
                 const targetId = resolveSampleLayerId();
     
@@ -431,7 +461,7 @@ const MainContainerContent: React.FC = () => {
                 />
                 <DeleteButton 
                     isRecording={isRecording}
-                    hasSteps={adjustmentSteps.length > 0 && (selectedIndex >= 0 || selectedIndices.size > 0)}
+                    hasSteps={adjustmentSteps.length > 0 && ((selectedIndex !== null && selectedIndex >= 0) || selectedIndices.size > 0)}
                     onDelete={async () => {
                         if (selectedIndices.size === 0 && (selectedIndex === null || selectedIndex < 0)) {
                             return;

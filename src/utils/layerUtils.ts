@@ -4,7 +4,7 @@ import { app } from 'photoshop';
  * 创建样本图层
  * @returns {Promise<number>} 返回创建的智能对象图层ID
  */
-export const createSampleLayer = async (): Promise<number> => {
+export const createSampleLayer = async (name: string = "样本图层"): Promise<number> => {
     const doc = app.activeDocument;
     if (!doc) {
         throw new Error('没有活动文档');
@@ -75,7 +75,7 @@ export const createSampleLayer = async (): Promise<number> => {
                         ],
                         to: {
                             _obj: "layer",
-                            name: "样本图层"
+                            name
                         },
                         _options: {
                             dialogOptions: "dontDisplay"
@@ -123,11 +123,17 @@ export const createSampleLayer = async (): Promise<number> => {
                                     }
                                 ],
                                 to: {
-                                    _ref: "layer",
-                                    _enum: "ordinal",
-                                    _value: "front"
+                                    _ref: [
+                                        {
+                                            _ref: "layer",
+                                            _enum: "ordinal",
+                                            _value: "front"
+                                        }
+                                    ]
                                 },
-                                _options: { dialogOptions: "dontDisplay" }
+                                _options: {
+                                    dialogOptions: "dontDisplay"
+                                }
                             }
                         ],
                         { synchronousExecution: true }
@@ -140,6 +146,23 @@ export const createSampleLayer = async (): Promise<number> => {
                 [
                     {
                         _obj: "newPlacedLayer",
+                        _options: {
+                            dialogOptions: "dontDisplay"
+                        }
+                    },
+                    {
+                        _obj: "set",
+                        _target: [
+                            {
+                                _ref: "layer",
+                                _enum: "ordinal",
+                                _value: "targetEnum"
+                            }
+                        ],
+                        to: {
+                            _obj: "layer",
+                            name
+                        },
                         _options: {
                             dialogOptions: "dontDisplay"
                         }
@@ -169,24 +192,50 @@ export const createSampleLayer = async (): Promise<number> => {
 };
 
 /**
- * 查找样本图层
+ * 查找样本图层（支持带时间戳的名称）
+ * 优先：精确匹配 preferName；其次：匹配前缀“样本图层”
+ * @param preferName 可选的精确名称（如："样本图层 2023-10-01 12:00:00"）
  * @returns {Promise<{id: number, layer: any} | null>} 返回样本图层信息或null
  */
-export const findSampleLayer = async () => {
-    const doc = app.activeDocument;
+export const findSampleLayer = async (preferName?: string) => {
+    const doc = app.activeDocument as any;
     if (!doc) {
         return null;
     }
 
-    for (let i = 0; i < doc.layers.length; i++) {
-        const layer = doc.layers[i];
-        if (layer.name === "样本图层" && layer.kind === "smartObject") {
-            return {
-                id: layer.id,
-                layer: layer
-            };
+    const safeChildren = (lyr: any) => {
+        try { return (lyr as any)?.layers || []; } catch { return []; }
+    };
+    const isSmart = (lyr: any) => {
+        try { return (lyr as any)?.kind === 'smartObject'; } catch { return true; }
+    };
+
+    const findByPredicate = (layers: any[], predicate: (name: string, lyr: any) => boolean): any => {
+        for (const lyr of layers) {
+            try {
+                const name = (lyr as any)?.name || '';
+                const id = (lyr as any)?.id ?? (lyr as any)?._id ?? null;
+                if (id && isSmart(lyr) && predicate(name, lyr)) {
+                    return { id, layer: lyr };
+                }
+                const children = safeChildren(lyr);
+                if (children && children.length) {
+                    const child = findByPredicate(children, predicate);
+                    if (child) return child;
+                }
+            } catch {}
         }
+        return null;
+    };
+
+    // 先按 preferName 精确匹配
+    if (preferName) {
+        const exact = findByPredicate((doc as any).layers as any[], (n) => n === preferName);
+        if (exact) return exact;
     }
+    // 再按前缀匹配（兼容旧名）
+    const prefixHit = findByPredicate((doc as any).layers as any[], (n) => typeof n === 'string' && n.startsWith('样本图层'));
+    if (prefixHit) return prefixHit;
 
     return null;
 };
@@ -219,4 +268,77 @@ export const selectLayer = async (layerId: number) => {
             { synchronousExecution: true }
         );
     }, {"commandName": "选择图层"});
+};
+
+// 新增：回退后强制刷新智能滤镜堆栈（添加临时高斯模糊再删除）
+export const forceRefreshSmartFilters = async (opts?: { layerId?: number; preferName?: string }): Promise<boolean> => {
+    try {
+        const doc = app.activeDocument as any;
+        if (!doc) return false;
+
+        let targetId: number | null | undefined = opts?.layerId;
+        if (!targetId) {
+            const found = await findSampleLayer(opts?.preferName);
+            targetId = found?.id;
+        }
+        if (!targetId) return false;
+
+        const { executeAsModal } = require("photoshop").core;
+        const { batchPlay } = require("photoshop").action;
+
+        await executeAsModal(async () => {
+            // 选中目标图层
+            await batchPlay([
+                {
+                    _obj: "select",
+                    _target: [{ _ref: "layer", _id: targetId }],
+                    makeVisible: true,
+                    _options: { dialogOptions: "dontDisplay" }
+                }
+            ], { synchronousExecution: true });
+
+            // 记录添加前滤镜数量
+            const before = await batchPlay([
+                { _obj: "get", _target: [{ _ref: "layer", _id: targetId }], _options: { dialogOptions: "dontDisplay" } }
+            ], { synchronousExecution: true });
+            const beforeLen = (before?.[0]?.smartObject?.filterFX || []).length || 0;
+
+            // 添加一个极小半径的高斯模糊作为临时智能滤镜
+            try {
+                await batchPlay([
+                    {
+                        _obj: "gaussianBlur",
+                        radius: { _unit: "pixelsUnit", _value: 0.1 },
+                        _options: { dialogOptions: "dontDisplay" }
+                    }
+                ], { synchronousExecution: true });
+            } catch (e) {
+                // 忽略添加失败
+            }
+
+            // 再次获取滤镜数量
+            const after = await batchPlay([
+                { _obj: "get", _target: [{ _ref: "layer", _id: targetId }], _options: { dialogOptions: "dontDisplay" } }
+            ], { synchronousExecution: true });
+            const afterLen = (after?.[0]?.smartObject?.filterFX || []).length || 0;
+
+            // 若成功新增，则删除新增的那个（位于栈顶，索引为 afterLen）
+            if (afterLen > beforeLen) {
+                try {
+                    await batchPlay([
+                        {
+                            _obj: "delete",
+                            _target: [ { _ref: "filterFX", _index: afterLen } ],
+                            _options: { dialogOptions: "dontDisplay" }
+                        }
+                    ], { synchronousExecution: true });
+                } catch (_) { /* 忽略删除失败 */ }
+            }
+        }, { commandName: "刷新智能滤镜堆栈" });
+
+        return true;
+    } catch (e) {
+        // 整体失败则返回 false，不影响主流程
+        return false;
+    }
 };

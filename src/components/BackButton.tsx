@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { app } from 'photoshop';
 import { getButtonStyle, handleMouseOver, handleMouseOut } from '../styles/buttonStyles';
 import { BackIcon } from '../styles/Icons';
+import { useRecordContext } from '../contexts/RecordContext';
+import { findSampleLayer, selectLayer } from '../utils/layerUtils';
 
 // 导入所需的 Photoshop API
 const { action, core } = require("photoshop");
@@ -9,7 +11,7 @@ const { batchPlay, addNotificationListener } = action;
 const { executeAsModal, showAlert } = core;
 
 // 快照名称常量
-const SNAPSHOT_NAME = "调整拆分前"; 
+const SNAPSHOT_PREFIX = "调整拆分前"; 
 
 interface BackButtonProps {
     isRecording: boolean;
@@ -18,9 +20,31 @@ interface BackButtonProps {
 const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
     const [hasSnapshot, setHasSnapshot] = useState(false);
     const [isChecking, setIsChecking] = useState(false);
-    
+    const { previousSampleTs, currentSampleTs, setCurrentSampleTs, setPreviousSampleTs } = useRecordContext();
+
     // 计算按钮是否禁用
     const isButtonDisabled = isRecording || !hasSnapshot || isChecking;
+
+    const buildSnapshotName = (ts?: string | null) => ts ? `${SNAPSHOT_PREFIX} ${ts}` : SNAPSHOT_PREFIX;
+    const isSnapshotEntry = (state: any) => (
+        (state?.snapshot === true || state?.type === "snapshot" || Object.prototype.hasOwnProperty.call(state || {}, 'snapshot')) &&
+        typeof state?.name === 'string'
+    );
+    const findLatestSnapshotByExact = (historyStates: any[], ts: string) => {
+        const targetName = buildSnapshotName(ts);
+        for (let i = historyStates.length - 1; i >= 0; i--) {
+            const s = historyStates[i];
+            if (isSnapshotEntry(s) && s.name.trim() === targetName) return s;
+        }
+        return null;
+    };
+    const findLatestSnapshotByPrefix = (historyStates: any[]) => {
+        for (let i = historyStates.length - 1; i >= 0; i--) {
+            const s = historyStates[i];
+            if (isSnapshotEntry(s) && s.name.trim().startsWith(SNAPSHOT_PREFIX)) return s;
+        }
+        return null;
+    };
 
     const checkSnapshot = async () => {
         if (isChecking) return;
@@ -32,19 +56,22 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
                 return;
             }
 
-            // 直接用 historyStates 检查快照
             const historyStates = app.activeDocument.historyStates;
             if (!historyStates || historyStates.length === 0) {
                 setHasSnapshot(false);
                 return;
             }
             let snapshotFound = false;
-            const targetSnapshot = historyStates.find(
-                state =>
-                    (state.snapshot === true || state.type === "snapshot" || state.hasOwnProperty('snapshot')) &&
-                    typeof state.name === 'string' &&
-                    state.name.trim() === SNAPSHOT_NAME
-            );
+            let targetSnapshot: any = null;
+            if (previousSampleTs) {
+                targetSnapshot = findLatestSnapshotByExact(historyStates as any[], previousSampleTs);
+            }
+            if (!targetSnapshot && currentSampleTs) {
+                targetSnapshot = findLatestSnapshotByExact(historyStates as any[], currentSampleTs);
+            }
+            if (!targetSnapshot) {
+                targetSnapshot = findLatestSnapshotByPrefix(historyStates as any[]);
+            }
             snapshotFound = !!targetSnapshot;
             setHasSnapshot(snapshotFound);
         } catch (error) {
@@ -62,34 +89,46 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
         }
 
         try {
-            const historyStates = app.activeDocument.historyStates;
+            const historyStates = app.activeDocument.historyStates as any[];
             if (!historyStates || historyStates.length === 0) {
-                showAlert({ message: '未找到"调整拆分前"快照' });
+                showAlert({ message: '未找到“调整拆分前”相关快照' });
                 return;
             }
-            // 从后往前找第一个匹配的快照（即最新的）
-            let targetSnapshot = null;
-            for (let i = historyStates.length - 1; i >= 0; i--) {
-                const state = historyStates[i];
-                if (
-                    (state.snapshot === true || state.type === "snapshot" || state.hasOwnProperty('snapshot')) &&
-                    typeof state.name === 'string' &&
-                    state.name.trim() === SNAPSHOT_NAME
-                ) {
-                    targetSnapshot = state;
-                    break;
-                }
+            // 优先使用 previousSampleTs -> currentSampleTs 的精确命中，再兜底按前缀匹配最新快照
+            let targetSnapshot: any = null;
+            if (previousSampleTs) {
+                targetSnapshot = findLatestSnapshotByExact(historyStates, previousSampleTs);
+            }
+            if (!targetSnapshot && currentSampleTs) {
+                targetSnapshot = findLatestSnapshotByExact(historyStates, currentSampleTs);
+            }
+            if (!targetSnapshot) {
+                targetSnapshot = findLatestSnapshotByPrefix(historyStates);
             }
 
             if (targetSnapshot) {
-                // 兼容 ID/id
                 const snapshotId = targetSnapshot.ID ?? targetSnapshot.id;
                 if (!snapshotId) {
                     showAlert({ message: '快照对象缺少ID，无法返回！' });
                     return;
                 }
-                // 标记正在回退，通知其他区域延迟响应历史事件
                 (window as any).__JW_isReverting = true;
+                const { addNotificationListener } = require("photoshop").action;
+                let __jwCleared = false;
+                const __jwTempListener = addNotificationListener(["historyStateChanged"], () => {
+                    if (__jwCleared) return;
+                    __jwCleared = true;
+                    (window as any).__JW_isReverting = false;
+                    try { window.dispatchEvent(new CustomEvent('JW_AFTER_REVERT')); } catch {}
+                    if (__jwTempListener?.remove) { __jwTempListener.remove(); }
+                });
+                setTimeout(() => {
+                    if (!__jwCleared) {
+                        (window as any).__JW_isReverting = false;
+                        try { window.dispatchEvent(new CustomEvent('JW_AFTER_REVERT')); } catch {}
+                        if (__jwTempListener?.remove) { __jwTempListener.remove(); }
+                    }
+                }, 1000);
                 await executeAsModal(async () => {
                     await batchPlay(
                         [
@@ -99,15 +138,42 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
                     );
                 }, { commandName: "返回到调整拆分前快照" });
 
+                // 回退后：尝试从快照名提取时间戳并同步上下文（若存在）
+                try {
+                    const nameStr = (targetSnapshot?.name || '').toString().trim();
+                    let tsUsed: string | null = null;
+                    if (nameStr.startsWith(SNAPSHOT_PREFIX)) {
+                        const rest = nameStr.slice(SNAPSHOT_PREFIX.length).trim();
+                        tsUsed = rest || null;
+                    }
+                    if (tsUsed) {
+                        setCurrentSampleTs(tsUsed);
+                        setPreviousSampleTs(null);
+                        // 新增：按名称优先精确匹配选择对应样本图层
+                        try {
+                            const preferName = `样本图层 ${tsUsed}`;
+                            const found = await findSampleLayer(preferName);
+                            if (found?.id) {
+                                await selectLayer(found.id);
+                            }
+                        } catch (e) {
+                            console.warn('回退后选择样本图层失败:', e);
+                        }
+                        // 新增：在上下文与图层同步完成后再次广播，触发记录面板等刷新
+                        try { window.dispatchEvent(new CustomEvent('JW_AFTER_REVERT_SYNCED')); } catch {}
+                    }
+                } catch (e) {
+                    console.warn('回退后同步样本时间戳失败:', e);
+                }
+
                 // 回退后刷新按钮可用状态
                 await checkSnapshot();
             } else {
-                showAlert({ message: '未找到"调整拆分前"快照' });
+                showAlert({ message: '未找到“调整拆分前”相关快照' });
             }
         } catch (error) {
             showAlert({ message: `返回快照失败: ${error.message || '未知错误'}` });
         } finally {
-            // 回退完成后，稍作延迟再清除回退标志，避免其他监听器在回退过程中访问失效的图层ID
             setTimeout(() => { (window as any).__JW_isReverting = false; }, 300);
         }
     };
@@ -182,6 +248,10 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
             )
         ];
         
+        // 新增：监听自定义事件，文件区创建/刷新快照后立即自检
+        const handleCustomRefresh = () => debouncedCheckFn();
+        window.addEventListener('JW_REFRESH_SNAPSHOT', handleCustomRefresh as any);
+        
         // 清理函数
         return () => {
             isMounted = false;
@@ -190,6 +260,7 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
                     listener.remove();
                 }
             });
+            window.removeEventListener('JW_REFRESH_SNAPSHOT', handleCustomRefresh as any);
         };
     }, []);
 
@@ -203,7 +274,8 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
 
     return (
         <sp-action-button
-            disabled={isButtonDisabled as any}
+            aria-disabled={isButtonDisabled}
+            role="button"
             onClick={handleClick}
             title={getButtonTitle()}
             className={`bottom-button ${isButtonDisabled ? 'disabled' : ''}`}
@@ -212,7 +284,7 @@ const BackButton: React.FC<BackButtonProps> = ({ isRecording }) => {
             onMouseOut={handleMouseOut}
         >
             <div slot="icon" className="icon">
-                <BackIcon />
+                <BackIcon disabled={isButtonDisabled} />
             </div>
             <span>回退</span>
         </sp-action-button>

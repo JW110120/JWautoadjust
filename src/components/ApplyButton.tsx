@@ -29,7 +29,6 @@ const ApplyButton: React.FC<ApplyButtonProps> = ({
 
     return (
         <sp-action-button
-            disabled={isButtonDisabled as any}
             onClick={handleClick}
             title={
                 isRecording ? "录制时无法应用" : 
@@ -39,12 +38,14 @@ const ApplyButton: React.FC<ApplyButtonProps> = ({
             }
             className={`bottom-button ${isButtonDisabled ? 'disabled' : ''}`}
             aria-label={isProcessing ? `处理中 ${progress}%` : '应用所有调整'}
+            aria-disabled={isButtonDisabled}
+            role="button"
             style={getButtonStyle(isButtonDisabled)}
             onMouseOver={(e) => handleMouseOver(e, isButtonDisabled)}
             onMouseOut={handleMouseOut}
         >
             <div slot="icon" className="icon" aria-hidden="true">
-                <ApplyIcon />
+                <ApplyIcon disabled={isButtonDisabled} />
             </div>
             <span>{isProcessing ? `${progress}%` : '应用'}</span>
         </sp-action-button>

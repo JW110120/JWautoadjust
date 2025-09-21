@@ -5,6 +5,8 @@ import { AdjustmentStepsContext } from './contexts/AdjustmentStepsContext';
 import { DocumentInfoContext } from './contexts/DocumentInfoContext';
 import { useProcessing } from './contexts/ProcessingContext';
 import { VisibilityOffIcon, VisibilityOnIcon, TransparencyLockIcon, MoveLockIcon, LockClosedIcon, LockOpenIcon, ExpandRightIcon, ExpandDownIcon, FolderClosedIcon, FolderOpenIcon, BackgroundLockIcon } from './styles/Icons';
+import { useRecordContext } from './contexts/RecordContext';
+import { forceRefreshSmartFilters } from './utils/layerUtils';
 
    // 渲染文件树
    const LayerTreeComponent = React.memo(({ 
@@ -226,6 +228,7 @@ const FileArea: React.FC = () => {
     const { adjustmentSteps } = useContext(AdjustmentStepsContext);
     const { documentInfo } = useContext(DocumentInfoContext); 
     const { isProcessing, setIsProcessing } = useProcessing();  // 获取处理状态
+    const { currentSampleTs } = useRecordContext();
     const [updateTrigger, setUpdateTrigger] = useState(0);
     const [listenerEnabled, setListenerEnabled] = useState(true);
     const [pixelLayers, setPixelLayers] = useState([]);
@@ -246,55 +249,42 @@ const FileArea: React.FC = () => {
             const doc = app.activeDocument;
             if (!doc) return;
 
-            const { batchPlay } = require("photoshop").action;
-
-            const collectAllLayers = (arr: any[], acc: any[] = []): any[] => {
-                arr.forEach((l) => {
-                    acc.push(l);
-                    if (l.layers && l.layers.length) {
-                        collectAllLayers(l.layers, acc);
-                    }
+            // 构建状态映射（只读取必要属性，尽量避免持有 UXP 代理对象）
+            const states: Record<number, { visible: boolean; protectTransparency?: boolean; protectPosition?: boolean; protectAll?: boolean; isBackground?: boolean }> = {};
+            const traverse = (layers: any[]) => {
+                layers.forEach((ly: any) => {
+                    try {
+                        const id = (ly as any)._id ?? (ly as any).id;
+                        if (typeof id === 'number') {
+                            const safe = (fn: () => any, fb: any) => { try { return fn(); } catch { return fb; } };
+                            const visible = safe(() => ly.visible !== false, true);
+                            const protectTransparency = safe(() => !!ly.protectTransparency, false);
+                            const protectPosition = safe(() => !!ly.protectPosition, false);
+                            const protectAll = safe(() => !!ly.protectAll, false);
+                            const isBackground = safe(() => !!ly.background, false);
+                            states[id] = { visible, protectTransparency, protectPosition, protectAll, isBackground };
+                        }
+                        const kids = (() => { try { return (ly as any).layers || []; } catch { return []; } })();
+                        if (Array.isArray(kids) && kids.length) traverse(kids);
+                    } catch { /* 单个图层读取失败时忽略 */ }
                 });
-                return acc;
             };
-
-            const allLayers = collectAllLayers(doc.layers.slice());
-            if (!allLayers || allLayers.length === 0) {
-                setLayerStates({});
-                return;
-            }
-
-            const requests = allLayers.map((l: any) => ({
-                _obj: "get",
-                _target: [{ _ref: "layer", _id: l._id }],
-                _options: { dialogOptions: "dontDisplay" }
-            }));
-
-            const result = await batchPlay(requests, { synchronousExecution: true });
-            const newStates: Record<number, { visible: boolean; protectTransparency?: boolean; protectPosition?: boolean; protectAll?: boolean; isBackground?: boolean }> = {};
-            result.forEach((desc: any, i: number) => {
-                const id = allLayers[i]._id;
-                const locking = desc?.layerLocking || {};
-                newStates[id] = {
-                    visible: !!desc?.visible,
-                    protectTransparency: !!locking?.protectTransparency,
-                    protectPosition: !!locking?.protectPosition,
-                    protectAll: !!locking?.protectAll,
-                    isBackground: !!desc?.background,
-                };
-            });
-            setLayerStates(newStates);
+            traverse(((doc as any).layers) || []);
+            setLayerStates(states);
         } catch (e) {
             console.error('获取图层状态失败:', e);
         }
+    }, [updateTrigger]);
+
+    // 切换组的展开/折叠状态
+    const toggleGroup = useCallback((path: string) => {
+        setCollapsedGroups(prev => ({
+            ...prev,
+            [path]: !prev[path]
+        }));
     }, []);
 
-    // 在 updateTrigger 改变时刷新图层状态
-    useEffect(() => {
-        fetchLayerStates();
-    }, [fetchLayerStates, updateTrigger]);
-
-    // 切换图层可见性
+    // 处理图层可见性
     const onToggleVisibility = useCallback(
         async (layerId: number) => {
             try {
@@ -678,21 +668,55 @@ const FileArea: React.FC = () => {
 
                 // 在复制前解析样本智能对象ID（必须既叫“样本图层”且类型为 smartObject）
                 const doc = app.activeDocument;
-                const findSampleSOId = (layers: any[]): number | null => {
+
+                // 等待回退完成（若存在）
+                const waitUntilStable = async (maxMs = 2000) => {
+                    const start = Date.now();
+                    while ((window as any).__JW_isReverting && Date.now() - start < maxMs) {
+                        await new Promise(r => setTimeout(r, 120));
+                    }
+                };
+                await waitUntilStable(2200);
+
+                // 更稳健的递归查找：优先精确匹配“样本图层 <ts>”，否则按前缀匹配
+                const preferName = currentSampleTs ? `样本图层 ${currentSampleTs}` : null;
+                const safeFindSampleSOId = (layers: any[]): number | null => {
                     for (const lyr of layers) {
-                        if (lyr.name === '样本图层' && (lyr as any).kind === 'smartObject') {
-                            return (lyr as any).id ?? (lyr as any)._id ?? null;
-                        }
-                        if ((lyr as any).kind === 'group' && (lyr as any).layers) {
-                            const child = findSampleSOId((lyr as any).layers);
-                            if (child) return child;
-                        }
+                        try {
+                            const name = (lyr as any)?.name || '';
+                            let isSmart = true;
+                            try { isSmart = ((lyr as any)?.kind === 'smartObject'); } catch { isSmart = true; }
+                            const id = (lyr as any).id ?? (lyr as any)._id ?? null;
+                            if (id) {
+                                if (preferName && name === preferName && isSmart) return id;
+                                if (typeof name === 'string' && name.startsWith('样本图层')) return id;
+                            }
+                            const kind = (() => { try { return (lyr as any)?.kind; } catch { return undefined; } })();
+                            const children = kind === 'group' ? (() => { try { return (lyr as any)?.layers || []; } catch { return []; } })() : [];
+                            if (children && children.length) {
+                                const child = safeFindSampleSOId(children);
+                                if (child) return child;
+                            }
+                        } catch { /* 单个图层读取失败时跳过 */ }
                     }
                     return null;
                 };
-                const sampleSOId = findSampleSOId(doc.layers as any);
+
+                // 新增：带重试查找，回退后的短暂不同步期避免误判
+                const resolveSampleSOIdWithRetry = async (maxTry = 10, gap = 200): Promise<number | null> => {
+                    for (let i = 0; i < maxTry; i++) {
+                        try {
+                            const d = app.activeDocument;
+                            const id = safeFindSampleSOId((d as any).layers as any);
+                            if (id) return id;
+                        } catch {}
+                        await new Promise(r => setTimeout(r, gap));
+                    }
+                    return null;
+                };
+                const sampleSOId = await resolveSampleSOIdWithRetry(10, 220);
                 if (!sampleSOId) {
-                    throw new Error('未找到名为“样本图层”的智能对象');
+                    throw new Error('未找到“样本图层”前缀的智能对象');
                 }
 
                 // 4. 循环复制所有滤镜
@@ -731,6 +755,15 @@ const FileArea: React.FC = () => {
                 return;
             }
 
+            // 若仍在回退，先等待稳定，避免读取到失效代理
+            const waitUntilStable = async (maxMs = 2000) => {
+                const start = Date.now();
+                while ((window as any).__JW_isReverting && Date.now() - start < maxMs) {
+                    await new Promise(r => setTimeout(r, 120));
+                }
+            };
+            await waitUntilStable(2200);
+
             setListenerEnabled(false);
             setIsProcessing(true);  // 开始处理
             setProgress(0);
@@ -739,22 +772,48 @@ const FileArea: React.FC = () => {
             try {
                 const { executeAsModal } = require("photoshop").core;
                 const { batchPlay } = require("photoshop").action;
-                const SNAPSHOT_NAME = '调整拆分前';
-                await executeAsModal(async () => {
-                    // 先删除同名快照（如果不存在或不支持按名称删除，忽略错误，不中断）
+                const SNAPSHOT_PREFIX = '调整拆分前';
+                const SNAPSHOT_NAME = currentSampleTs ? `${SNAPSHOT_PREFIX} ${currentSampleTs}` : SNAPSHOT_PREFIX;
+                // 先收集所有需要删除的旧快照ID（按前缀匹配）
+                const doc = require("photoshop").app.activeDocument;
+                const historyStates = (doc?.historyStates || []) as any[];
+                const isSnapshotEntry = (s: any) => (s?.snapshot === true || s?.type === 'snapshot' || Object.prototype.hasOwnProperty.call(s || {}, 'snapshot'));
+                const snapshotIdsToDelete: number[] = [];
+                for (const s of historyStates) {
                     try {
-                        await batchPlay([
-                            {
-                                _obj: 'delete',
-                                _target: [{ _ref: 'snapshotClass', _name: SNAPSHOT_NAME }],
-                                _isCommand: false,
-                            },
-                        ], { synchronousExecution: true });
-                    } catch (eDel) {
-                        console.debug('无同名快照可删或删除不被支持，忽略：', eDel);
+                        const name = (s?.name || '').toString().trim();
+                        if (isSnapshotEntry(s) && typeof name === 'string' && name.startsWith(SNAPSHOT_PREFIX)) {
+                            const id = s.ID ?? s.id;
+                            if (id) snapshotIdsToDelete.push(id);
+                        }
+                    } catch {}
+                }
+
+                await executeAsModal(async () => {
+                    // 逐个尝试删除旧快照（兼容两种 target 写法）
+                    for (const sid of snapshotIdsToDelete) {
+                        let done = false;
+                        try {
+                            await batchPlay([
+                                { _obj: 'delete', _target: [{ _ref: 'historyState', _id: sid }] }
+                            ], { synchronousExecution: true });
+                            done = true;
+                        } catch (e1) {
+                            try {
+                                await batchPlay([
+                                    { _obj: 'delete', _target: [{ _ref: 'snapshotClass', _id: sid }] }
+                                ], { synchronousExecution: true });
+                                done = true;
+                            } catch (e2) {
+                                console.debug('删除旧快照失败（已忽略）:', e2);
+                            }
+                        }
+                        if (!done) {
+                            // 忽略无法删除的条目，继续
+                        }
                     }
 
-                    // 再新建同名快照
+                    // 新建同名快照
                     await batchPlay([
                         {
                             _obj: 'make',
@@ -765,18 +824,84 @@ const FileArea: React.FC = () => {
                         },
                     ], { synchronousExecution: true });
                 }, { commandName: '刷新“调整拆分前”快照' });
+
+                // 主动通知：快照已刷新，提示回退按钮立即自检
+                try { window.dispatchEvent(new CustomEvent('JW_REFRESH_SNAPSHOT')); } catch {}
             } catch (e) {
                 console.warn('刷新快照失败（不中断流程）：', e);
             }
             
-            // 创建一个本地副本，避免状态更新影响处理
-            const layersToProcess = [...selectedLayers];
+            // 新增：在真正处理前，基于当前文档快照，重新解析选中项对应的最新图层ID，避免回退导致的旧ID失效
+            const resolveSelectedLayers = () => {
+                try {
+                    const doc = app.activeDocument;
+                    if (!doc) return [] as any[];
+
+                    // 与 useMemo(documentLayers) 中一致的快照器（不引入 parent 等 UXP 代理）
+                    const safe = (fn: () => any, fallback?: any) => { try { return fn(); } catch { return fallback; } };
+                    const snapshotLayer = (l: any): any => {
+                        const id = safe(() => (l._id ?? l.id), null);
+                        const name = safe(() => l.name, '');
+                        const kind = safe(() => l.kind, '');
+                        // 移除 bounds 读取，避免回退期访问代理属性导致异常
+                        const children = safe(() => Array.isArray(l.layers) ? l.layers.map(snapshotLayer) : [], []);
+                        return { _id: id, name, kind, layers: children };
+                    };
+
+                    const roots = doc.layers.map(snapshotLayer);
+                    const map: Record<string, any> = {};
+
+                    const buildMap = (layers: any[], parentPath = '') => {
+                        layers.forEach((layer, idx) => {
+                            const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
+                            if (layer.kind === 'group' && Array.isArray(layer.layers)) {
+                                buildMap(layer.layers, currentPath);
+                            } else if (layer.kind === 'pixel') {
+                                // 放宽过滤：仅依据 kind，避免依赖 bounds 的 hasContent 判断
+                                const identifier = `${currentPath}_${idx}`;
+                                map[identifier] = { ...layer, identifier };
+                            }
+                        });
+                    };
+
+                    buildMap(roots);
+                    // 将当前 state 中的 identifier 映射为最新的 layer 快照
+                    const resolved = selectedLayers.map((l: any) => map[l.identifier]).filter(Boolean);
+                    return resolved as any[];
+                } catch (err) {
+                    console.warn('解析最新选中图层失败：', err);
+                    return [] as any[];
+                }
+            };
+
+            const resolvedLayers = resolveSelectedLayers();
+            if (resolvedLayers.length === 0) {
+                const { showAlert } = require("photoshop").core;
+                showAlert({ message: '未能定位到当前文档中的选中图层，请重试。' });
+                setListenerEnabled(true);
+                setIsProcessing(false);
+                return;
+            }
             
-            // 按照文档中的顺序排序选中的图层
-            const sortedLayers = layersToProcess.sort((a, b) => {
-                const aIndex = app.activeDocument.layers.findIndex(l => l._id === a._id);
-                const bIndex = app.activeDocument.layers.findIndex(l => l._id === b._id);
-                return bIndex - aIndex;
+            // 使用解析后的列表，避免旧 ID
+            const layersToProcess = [...resolvedLayers];
+            
+            // 按照文档中的顺序排序选中的图层（若无法获取则保持原顺序）
+            const sortedLayers = layersToProcess.sort((a: any, b: any) => {
+                try {
+                    const flat: any[] = [];
+                    const collect = (arr: any[]) => arr.forEach((x) => { flat.push(x); Array.isArray(x.layers) && collect(x.layers); });
+                    // 基于当前 roots 计算展平顺序作为“堆叠序”
+                    const doc = app.activeDocument;
+                    const roots = (doc?.layers || []).map((l: any) => ({ _id: (l as any)._id ?? (l as any).id, layers: (l as any).layers || [] }));
+                    collect(roots as any);
+                    const ia = flat.findIndex(x => x && (x._id === a._id));
+                    const ib = flat.findIndex(x => x && (x._id === b._id));
+                    if (ia === -1 || ib === -1) return 0;
+                    return ib - ia; // 与原逻辑相同方向
+                } catch {
+                    return 0;
+                }
             });
 
             for (let i = 0; i < sortedLayers.length; i++) {
@@ -803,17 +928,25 @@ const FileArea: React.FC = () => {
                 const { executeAsModal } = require("photoshop").core;
                 const { batchPlay } = require("photoshop").action;
                 
-                // 先定位样本智能对象ID（严格：名称+类型）
+                // 先定位样本智能对象ID（优先精确“样本图层 <ts>”，否则前缀匹配）
                 const doc = app.activeDocument;
+                const preferName = currentSampleTs ? `样本图层 ${currentSampleTs}` : null;
                 const findSampleSOId = (layers: any[]): number | null => {
                     for (const lyr of layers) {
-                        if (lyr.name === '样本图层' && (lyr as any).kind === 'smartObject') {
-                            return (lyr as any).id ?? (lyr as any)._id ?? null;
-                        }
-                        if ((lyr as any).kind === 'group' && (lyr as any).layers) {
-                            const child = findSampleSOId((lyr as any).layers);
-                            if (child) return child;
-                        }
+                        try {
+                            const name = (lyr as any)?.name || '';
+                            let isSmart = true;
+                            try { isSmart = ((lyr as any)?.kind === 'smartObject'); } catch { isSmart = true; }
+                            const id = (lyr as any).id ?? (lyr as any)._id ?? null;
+                            if (id && isSmart) {
+                                if (preferName && name === preferName) return id;
+                                if (typeof name === 'string' && name.startsWith('样本图层')) return id;
+                            }
+                            if ((lyr as any).kind === 'group' && (lyr as any).layers) {
+                                const child = findSampleSOId((lyr as any).layers);
+                                if (child) return child;
+                            }
+                        } catch {}
                     }
                     return null;
                 };
@@ -1133,6 +1266,25 @@ const FileArea: React.FC = () => {
         // 通过改变 updateTrigger 来强制重新渲染 
         setUpdateTrigger(prev => prev + 1);
     }, []);
+
+    // 在回退完成后强制刷新文件树与清理选择
+    useEffect(() => {
+        const handler = () => {
+            try {
+                console.log('收到 JW_AFTER_REVERT，强制刷新文件树');
+                // 回退后，通过添加并删除一个临时智能滤镜来强制刷新 DOM/滤镜堆栈
+                (async () => { try { await forceRefreshSmartFilters(); } catch {} })();
+                refreshLayers();
+                // 清理选择，避免指向过期的 identifier
+                setSelectedLayers([]);
+                setSelectedLayerPaths({});
+            } catch (e) {
+                console.warn('JW_AFTER_REVERT 刷新失败', e);
+            }
+        };
+        window.addEventListener('JW_AFTER_REVERT', handler as any);
+        return () => window.removeEventListener('JW_AFTER_REVERT', handler as any);
+    }, [refreshLayers]);
 
     // 修改返回值部分，需要包含 isProcessing
     return {

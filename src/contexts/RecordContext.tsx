@@ -6,10 +6,18 @@ export const RecordProvider = ({ children }) => {
     const [isRecording, setIsRecording] = useState(false);
     const isRecordingRef = useRef(false);
 
+    // 新增：当前样本图层时间戳与上一次时间戳
+    const [currentSampleTs, setCurrentSampleTs] = useState<string | null>(null);
+    const [previousSampleTs, setPreviousSampleTs] = useState<string | null>(null);
+
     const value = {
         isRecording,
         setIsRecording,
-        isRecordingRef
+        isRecordingRef,
+        currentSampleTs,
+        setCurrentSampleTs,
+        previousSampleTs,
+        setPreviousSampleTs,
     };
 
     return (

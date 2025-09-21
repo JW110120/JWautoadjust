@@ -24,27 +24,27 @@ export const FolderOpenIcon = () => (
   </svg>
 );
 
-export const ApplyIcon = () => (
+export const ApplyIcon = ({ disabled }: { disabled?: boolean } = {}) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18" >
-    <path  d="M15.656,3.8625l-.7275-.5665a.5.5,0,0,0-.7.0875L7.411,12.1415,4.0875,8.8355a.5.5,0,0,0-.707,0L2.718,9.5a.5.5,0,0,0,0,.707l4.463,4.45a.5.5,0,0,0,.75-.0465L15.7435,4.564A.5.5,0,0,0,15.656,3.8625Z" />
+    <path className="icon-fill" fillOpacity={disabled ? 0.35 : 1} d="M15.656,3.8625l-.7275-.5665a.5.5,0,0,0-.7.0875L7.411,12.1415,4.0875,8.8355a.5.5,0,0,0-.707,0L2.718,9.5a.5.5,0,0,0,0,.707l4.463,4.45a.5.5,0,0,0,.75-.0465L15.7435,4.564A.5.5,0,0,0,15.656,3.8625Z" />
   </svg>
 );
 
-export const BackIcon = () => (
+export const BackIcon = ({ disabled }: { disabled?: boolean } = {}) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18" >
-    <path  d="M7.5145,5H7V2.4A.4.4,0,0,0,6.6,2H6.597a.39252.39252,0,0,0-.28.118L1.1035,7.732a.4.4,0,0,0,0,.536L6.317,13.882a.39252.39252,0,0,0,.28.118A.4.4,0,0,0,7,13.603V11a9.855,9.855,0,0,1,9.3955,3.405.335.335,0,0,0,.6045-.2C17,12.7265,15.366,5,7.5145,5Z" />
+    <path className="icon-fill" fillOpacity={disabled ? 0.35 : 1} d="M7.5145,5H7V2.4A.4.4,0,0,0,6.6,2H6.597a.39252.39252,0,0,0-.28.118L1.1035,7.732a.4.4,0,0,0,0,.536L6.317,13.882a.39252.39252,0,0,0,.28.118A.4.4,0,0,0,7,13.603V11a9.855,9.855,0,0,1,9.3955,3.405.335.335,0,0,0,.6045-.2C17,12.7265,15.366,5,7.5145,5Z" />
   </svg>
 );
 
-export const DeleteIcon = () => (
+export const DeleteIcon = ({ disabled }: { disabled?: boolean } = {}) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18" >
-    <path  d="M15.75,3H12V2a1,1,0,0,0-1-1H6A1,1,0,0,0,5,2V3H1.25A.25.25,0,0,0,1,3.25v.5A.25.25,0,0,0,1.25,4h1L3.4565,16.55a.5.5,0,0,0,.5.45H13.046a.5.5,0,0,0,.5-.45L14.75,4h1A.25.25,0,0,0,16,3.75v-.5A.25.25,0,0,0,15.75,3ZM5.5325,14.5a.5.5,0,0,1-.53245-.46529L5,14.034l-.5355-8a.50112.50112,0,0,1,1-.067l.5355,8a.5.5,0,0,1-.46486.53283ZM9,14a.5.5,0,0,1-1,0V6A.5.5,0,0,1,9,6ZM11,3H6V2h5Zm1,11.034a.50112.50112,0,0,1-1-.067l.5355-8a.50112.50112,0,1,1,1,.067Z" />
+    <path className="icon-fill" fillOpacity={disabled ? 0.35 : 1} d="M15.75,3H12V2a1,1,0,0,0-1-1H6A1,1,0,0,0,5,2V3H1.25A.25.25,0,0,0,1,3.25v.5A.25.25,0,0,0,1.25,4h1L3.4565,16.55a.5.5,0,0,0,.5.45H13.046a.5.5,0,0,0,.5-.45L14.75,4h1A.25.25,0,0,0,16,3.75v-.5A.25.25,0,0,0,15.75,3ZM5.5325,14.5a.5.5,0,0,1-.53245-.46529L5,14.034l-.5355-8a.50112.50112,0,0,1,1-.067l.5355,8a.5.5,0,0,1-.46486.53283ZM9,14a.5.5,0,0,1-1,0V6A.5.5,0,0,1,9,6ZM11,3H6V2h5Zm1,11.034a.50112.50112,0,0,1-1-.067l.5355-8a.50112.50112,0,1,1,1,.067Z" />
   </svg>
 );
 
-export const RecordIcon = ( { active }: { active: boolean }) => (
+export const RecordIcon = ( { active, disabled }: { active: boolean, disabled?: boolean }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18" >
-    <circle cx="9" cy="9" r="6" fill={active ? 'var(--danger, #e74c3c)' : 'currentColor'} className="icon-fill" />
+    <circle cx="9" cy="9" r="6" fill={active ? 'var(--danger, #e74c3c)' : 'currentColor'} className="icon-fill" fillOpacity={disabled ? 0.35 : 1} />
   </svg>
 );
 

@@ -5,7 +5,7 @@ import { DeleteIcon } from '../styles/Icons';
 interface DeleteButtonProps {
     isRecording: boolean;
     hasSteps: boolean;
-    onDelete: () => void;
+    onDelete: () => void | Promise<void>;
     index: number;
 }
 
@@ -19,8 +19,12 @@ const DeleteButton: React.FC<DeleteButtonProps> = ({
     
     const isButtonDisabled = isRecording || !hasSteps || isDeleting;
 
-    const handleClick = async () => {
+    const handleClick = async (e?: React.MouseEvent<HTMLElement>) => {
         if (isButtonDisabled) return;
+        if (e) {
+            handleMouseOut(e);
+            (e.currentTarget as HTMLElement).blur();
+        }
         
         // 校验索引范围，避免 index = -1 或其他无效索引
         if (index < 0) {
@@ -43,8 +47,7 @@ const DeleteButton: React.FC<DeleteButtonProps> = ({
 
     return (
         <sp-action-button 
-            disabled={isButtonDisabled as any}
-            onClick={handleClick}
+            onClick={handleClick as any}
             title={
                 isDeleting ? '删除中...' : 
                 isRecording ? '录制时无法删除' : 
@@ -53,12 +56,14 @@ const DeleteButton: React.FC<DeleteButtonProps> = ({
             }
             className={`bottom-button ${isButtonDisabled ? 'disabled' : ''}`}
             aria-label="删除步骤"
+            aria-disabled={isButtonDisabled}
+            role="button"
             style={getButtonStyle(isButtonDisabled)}
             onMouseOver={(e) => handleMouseOver(e, isButtonDisabled)}
             onMouseOut={handleMouseOut}
         >
             <div slot="icon" className="icon" aria-hidden="true">
-                <DeleteIcon />
+                <DeleteIcon disabled={isButtonDisabled} />
             </div>
             <span>{isDeleting ? '删除中' : '删除'}</span>
         </sp-action-button>

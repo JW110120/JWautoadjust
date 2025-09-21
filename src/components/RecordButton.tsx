@@ -32,12 +32,14 @@ const RecordButton: React.FC<RecordButtonProps> = ({ isRecording, onRecordClick 
             onClick={onRecordClick}
             className={`bottom-button ${isRecording ? 'recording' : ''} ${isButtonDisabled ? 'disabled' : ''}`}
             title={!hasActiveDocument ? "没有活动的文档" : isRecording ? "点击停止录制" : "点击开始录制"}
+            aria-disabled={isButtonDisabled}
+            role="button"
             style={getButtonStyle(isButtonDisabled)}
             onMouseOver={(e) => handleMouseOver(e, isButtonDisabled)}
             onMouseOut={handleMouseOut}
         >
             <div slot="icon" className="icon" aria-hidden="true">
-                <RecordIcon active={isRecording} />
+                <RecordIcon active={isRecording} disabled={isButtonDisabled} />
             </div>
             <span>{isRecording ? '停止' : '记录'}</span>
         </sp-action-button>

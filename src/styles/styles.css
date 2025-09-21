@@ -694,3 +694,244 @@ sp-toast [slot="icon"] {
 .spectrum-Toast .spectrum-Toast-content, sp-toast .spectrum-Toast-content {
   line-height: 18px;
 }
+/* 底部 action 按钮的通用样式增强与禁用态可视化 */
+.bottom-button {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  min-height: 28px;
+  user-select: none;
+}
+
+.bottom-button .icon, .bottom-button span {
+  pointer-events: none; /* 避免子元素阻挡父级点击区域 */
+}
+
+.bottom-button.disabled {
+  filter: grayscale(20%);
+}
+
+.bottom-button.disabled .icon,
+.bottom-button.disabled span {
+  opacity: 0.2;
+}
+
+.bottom-button:not(.disabled):hover {
+  background-color: var(--bg-hover) !important;
+}
+
+/* 录制按钮颜色维持既有定义，这里只做补充 */
+.bottom-button.recording .icon { color: var(--danger) !important; }
+
+/* 图层名称避免竖排，保持横向排列 */
+.layer-name {
+  color: var(--text);
+  display: inline-block;
+  white-space: nowrap;
+  flex: 1 1 auto;      /* 占据剩余空间，避免与按钮互相挤压 */
+  min-width: 0;        /* 允许内容在容器内收缩，防止换行导致高度抖动 */
+}
+
+
+/* 右侧状态图标容器与列表项布局 */
+.layer-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;           /* 列表项占满整行，hover 区域稳定 */
+}
+
+.layer-checkbox {
+  margin: 0 8px 0 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex: 0 0 auto; /* 勾选框固定宽度 */
+}
+
+/* 图层名容器：充满中间区域，不与右侧图标重叠 */
+.layer-name {
+  color: var(--text);
+  display: inline-block;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+  pointer-events: auto; /* 确保点击仅落在名字上 */
+  overflow: hidden;           /* 防止文本越过图标区 */
+  text-overflow: ellipsis;    /* 溢出显示省略号 */
+}
+
+/* 右侧图标容器：与名字分栏对齐，禁止名字点击穿透 */
+.layer-status-icons {
+  margin-left: auto;
+  display: flex;
+  width: auto;
+  min-width: 0;
+  justify-content: flex-end;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 120ms ease-in-out;
+  flex: 0 0 auto;
+  /* 固定容器高度，避免悬停时抖动 */
+  height: 24px;
+  align-items: center;
+}
+
+/* 每个按钮固定24px方块，占位 */
+.layer-status-icons sp-action-button.icon-button {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--icon);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 默认非激活：占位但不可见；悬停或聚焦显示全部 */
+.layer-status-icons sp-action-button.icon-button { visibility: hidden; display: inline-flex; }
+.layer-item:hover .layer-status-icons sp-action-button.icon-button,
+.layer-status-icons sp-action-button.icon-button.active,
+.layer-status-icons sp-action-button.icon-button:focus-visible { visibility: visible; }
+
+/* 颜色直接作用在 svg 与具体图形元素上，统一随 currentColor 渲染 */
+.layer-status-icons sp-action-button.icon-button .icon svg { color: var(--icon); }
+.layer-status-icons sp-action-button.icon-button:hover .icon svg { color: var(--text); }
+.layer-status-icons sp-action-button.icon-button.active .icon svg { color: currentColor; }
+.layer-status-icons sp-action-button.icon-button.active:hover .icon svg { color: currentColor; }
+.layer-status-icons sp-action-button.icon-button .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button:hover .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button.active .icon .icon-fill,
+.layer-status-icons sp-action-button.icon-button.active:hover .icon .icon-fill { fill: currentColor !important; }
+
+/* 添加紫色（背景锁）语义色 */
+:root { --purple: #9b59b6; }
+
+/* 非悬停时，未激活按钮仅通过隐藏其矢量图形实现“不可见”效果（双保险之一） */
+.layer-item:not(:hover) .layer-status-icons sp-action-button.icon-button:not(.active) .icon .icon-fill {
+  display: none !important;
+}
+/* 悬停后恢复所有图形显示 */
+.layer-item:hover .layer-status-icons sp-action-button.icon-button .icon .icon-fill {
+  display: inline !important;
+}
+
+/* 背景图层的紫色锁定按钮颜色（双保险） */
+.layer-status-icons sp-action-button.icon-button.background-lock.active,
+.layer-status-icons sp-action-button.icon-button.background-lock.active:hover {
+  color: var(--purple, #9b59b6) !important;
+}
+/* 顶部 Toast 堆叠区域 */
+.toast-region {
+  position: fixed;
+  right: 2px;
+  top: 2px;
+  display: flex;
+  height: 40px;
+  flex-direction: row;
+  z-index: 1300; /* 高于分割线/底部条 */
+  pointer-events: none; /* 区域允许穿透，由 toast 自身接管交互 */
+}
+
+.toast-region sp-toast {
+  pointer-events: auto; /* 恢复交互 */
+  max-width: 420px; /* 控制上限，避免过长 */
+}
+
+/* 统一 toast 内边距、行高与比例 */
+sp-toast {
+  --spectrum-toast-spacing-vertical: 8px;
+  --spectrum-toast-spacing-horizontal: 14px;
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* 正向(positive)配色 - 纯色绿底，白字白图标 */
+sp-toast[variant="positive"] {
+  --spectrum-toast-background-color: #237a33;
+  --spectrum-toast-content-color: #ffffff;
+  backdrop-filter: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  background: var(--spectrum-toast-background-color);
+}
+
+/* 其它变体边框/阴影 */
+sp-toast[variant="negative"], sp-toast[variant="warning"], sp-toast[variant="info"] {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+
+/* 左侧图标槽位，保持与文字基线对齐 */
+sp-toast [slot="icon"] {
+  display: inline-flex;
+  height: 100%;
+  align-items: center; 
+  margin-left: 10px; /* 图标与文字间距更大一些 */
+}
+
+/* 文本进一步与左边图标拉开距离，且不换行 */
+.toast-message-text {
+  display: inline-flex;
+  margin: 0 10px;
+  height: 100%;
+  line-height: 100%;
+  align-items: center;
+}
+
+/* 右侧操作区域：加分隔线与内边距（单一包装器） */
+.toast-action-wrap {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+}
+
+.toast-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255,255,255,0.55);
+  margin-right: 8px;
+  border-radius: 1px;
+}
+
+/* Action 按钮（关闭）样式与尺寸 */
+.toast-action-wrap sp-button {
+  --spectrum-button-height: 22px;
+  --spectrum-alias-component-text-size-default: 16px;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 2px 2px;
+  margin-right: 10px;
+}
+
+/* 暗色下的图标可见性 */
+.spectrum-Toast .spectrum-Icon, sp-toast .spectrum-Icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 顶部容器间距更紧凑 */
+.spectrum-ToastContainer--top, sp-toast-container[placement="top"] {
+  top: 8px !important;
+}
+.spectrum-Toast, sp-toast, [role="alert"] .spectrum-Toast {
+  align-items: center;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+.spectrum-Toast .spectrum-Icon, sp-toast .spectrum-Icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.spectrum-Toast .spectrum-Toast-content, sp-toast .spectrum-Toast-content {
+  line-height: 18px;
+}
