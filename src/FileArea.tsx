@@ -654,6 +654,84 @@ const FileArea: React.FC = () => {
                     }
                 ], { synchronousExecution: true });
 
+                // 新增：保存原状态并临时规范化（显示 + 解锁）
+                const originalState = (() => {
+                    const s = (layerStates?.[layer._id] || {}) as any;
+                    return {
+                        visible: s?.visible !== false,
+                        protectTransparency: !!s?.protectTransparency,
+                        protectPosition: !!s?.protectPosition,
+                        protectAll: !!s?.protectAll,
+                    };
+                })();
+                const needUnlock = !!(originalState.protectAll || originalState.protectPosition || originalState.protectTransparency);
+                // 若原先隐藏则显示
+                if (!originalState.visible) {
+                    await batchPlay([
+                        {
+                            _obj: 'show',
+                            null: [{ _ref: 'layer', _id: layer._id }],
+                            _options: { dialogOptions: 'dontDisplay' },
+                        }
+                    ], { synchronousExecution: true });
+                }
+                // 若原先有任意锁定则全部解锁
+                if (needUnlock) {
+                    await batchPlay([
+                        {
+                            _obj: 'applyLocking',
+                            _target: [{ _ref: 'layer', _id: layer._id }],
+                            layerLocking: {
+                                _obj: 'layerLocking',
+                                protectAll: false,
+                                protectPosition: false,
+                                protectTransparency: false,
+                            },
+                            _options: { dialogOptions: 'dontDisplay' },
+                        }
+                    ], { synchronousExecution: true });
+                }
+
+                // 新增：蒙版保护——将用户蒙版暂存为通道
+                const maskChannelName = `JW_TMP_MASK_${layer._id}`;
+                let maskSaved = false;
+                try {
+                    // 将选区设置为当前图层蒙版
+                    await batchPlay([
+                        {
+                            _obj: 'set',
+                            _target: [{ _ref: 'channel', _property: 'selection' }],
+                            to: [{ _ref: 'channel', _enum: 'channel', _value: 'mask' }],
+                            _options: { dialogOptions: 'dontDisplay' }
+                        }
+                    ], { synchronousExecution: true });
+
+                    // 将当前选区保存为文档通道
+                    await batchPlay([
+                        {
+                            _obj: 'make',
+                            _target: [{ _ref: 'channel' }],
+                            using: { _ref: 'channel', _property: 'selection' },
+                            name: maskChannelName,
+                            _options: { dialogOptions: 'dontDisplay' }
+                        }
+                    ], { synchronousExecution: true });
+
+                    // 取消选区
+                    await batchPlay([
+                        {
+                            _obj: 'set',
+                            _target: [{ _ref: 'channel', _property: 'selection' }],
+                            to: { _enum: 'ordinal', _value: 'none' },
+                            _options: { dialogOptions: 'dontDisplay' }
+                        }
+                    ], { synchronousExecution: true });
+                    maskSaved = true;
+                } catch (e) {
+                    // 无用户蒙版或旧版不支持，静默跳过
+                    maskSaved = false;
+                }
+
                 // 3. 转换为智能对象
                 await batchPlay([{_obj: "newPlacedLayer"}], { synchronousExecution: true });
 
@@ -732,6 +810,78 @@ const FileArea: React.FC = () => {
                 
                 // 5. 栅格化
                 await batchPlay([{ _obj: "rasterizeLayer", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }], rasterizeLayer: "entire" }], { synchronousExecution: true });
+
+                // 新增：若保存过蒙版则恢复为图层蒙版
+                if (maskSaved) {
+                    try {
+                        // 从临时通道载入为选区
+                        await batchPlay([
+                            {
+                                _obj: 'set',
+                                _target: [{ _ref: 'channel', _property: 'selection' }],
+                                to: [{ _ref: 'channel', _name: maskChannelName }],
+                                _options: { dialogOptions: 'dontDisplay' }
+                            }
+                        ], { synchronousExecution: true });
+
+                        // 添加基于选区的图层蒙版（显示选区）
+                        await batchPlay([
+                            {
+                                _obj: 'addLayerMask',
+                                what: { _enum: 'userMaskEnabled', _value: 'revealSelection' },
+                                _options: { dialogOptions: 'dontDisplay' }
+                            }
+                        ], { synchronousExecution: true });
+
+                        // 删除临时通道
+                        await batchPlay([
+                            { _obj: 'delete', _target: [{ _ref: 'channel', _name: maskChannelName }], _options: { dialogOptions: 'dontDisplay' } }
+                        ], { synchronousExecution: true });
+
+                        // 取消选区
+                        await batchPlay([
+                            {
+                                _obj: 'set',
+                                _target: [{ _ref: 'channel', _property: 'selection' }],
+                                to: { _enum: 'ordinal', _value: 'none' },
+                                _options: { dialogOptions: 'dontDisplay' }
+                            }
+                        ], { synchronousExecution: true });
+                    } catch (e) {
+                        // 恢复失败则尝试清理通道并继续
+                        try {
+                            await batchPlay([
+                                { _obj: 'delete', _target: [{ _ref: 'channel', _name: maskChannelName }], _options: { dialogOptions: 'dontDisplay' } }
+                            ], { synchronousExecution: true });
+                        } catch {}
+                    }
+                }
+
+                // 新增：恢复原状态（锁定与可见性）
+                if (needUnlock) {
+                    await batchPlay([
+                        {
+                            _obj: 'applyLocking',
+                            _target: [{ _ref: 'layer', _id: layer._id }],
+                            layerLocking: {
+                                _obj: 'layerLocking',
+                                protectAll: originalState.protectAll,
+                                protectPosition: originalState.protectPosition,
+                                protectTransparency: originalState.protectTransparency,
+                            },
+                            _options: { dialogOptions: 'dontDisplay' },
+                        }
+                    ], { synchronousExecution: true });
+                }
+                if (!originalState.visible) {
+                    await batchPlay([
+                        {
+                            _obj: 'hide',
+                            null: [{ _ref: 'layer', _id: layer._id }],
+                            _options: { dialogOptions: 'dontDisplay' },
+                        }
+                    ], { synchronousExecution: true });
+                }
 
                 // 6. 取消选择所有图层
                 await batchPlay([{ _obj: "selectNoLayers", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }], _options: { dialogOptions: "dontDisplay" } }], { synchronousExecution: true });
