@@ -1251,7 +1251,6 @@ export const useRecord = () => {
                  if (!isProcessing) {  
                      // 添加防抖处理
                      const timeoutId = setTimeout(() => {
-                         console.log('RecordArea历史记录变化事件触发')
                          handleDocumentChange()
                      }, 100)
                      

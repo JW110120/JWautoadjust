@@ -554,7 +554,6 @@ const FileArea: React.FC = () => {
                         return;
                     }
                     if (listenerEnabled) {  // 只在启用时执行
-                        console.log('FileArea历史记录变化事件触发');
                         refreshLayers();
                     }
                 }
@@ -590,7 +589,6 @@ const FileArea: React.FC = () => {
                         return;
                     }
                     if (listenerEnabled) {
-                        console.log('FileArea文档打开/关闭/新建事件触发');
                         refreshLayers();
                     }
                 }
@@ -683,66 +681,93 @@ const FileArea: React.FC = () => {
                             _target: [{ _ref: 'layer', _id: layer._id }],
                             layerLocking: {
                                 _obj: 'layerLocking',
-                                protectAll: false,
-                                protectPosition: false,
-                                protectTransparency: false,
+                                protectNone: true,
                             },
                             _options: { dialogOptions: 'dontDisplay' },
                         }
                     ], { synchronousExecution: true });
                 }
 
-                // 新增：蒙版保护——将用户蒙版暂存为通道
-                const maskChannelName = `JW_TMP_MASK_${layer._id}`;
-                let maskSaved = false;
+                // 新增：蒙版保护预处理（临时图层 + 应用图像）
+                let hasMask = false;
+                let maskTempLayerName: string | null = null;
+                let hasLiquifyFilter = false;
+
+                // 预检测当前图层是否存在用户蒙版，若无则完全跳过后续蒙版保护逻辑
                 try {
-                    // 将选区设置为当前图层蒙版
-                    await batchPlay([
-                        {
-                            _obj: 'set',
-                            _target: [{ _ref: 'channel', _property: 'selection' }],
-                            to: [{ _ref: 'channel', _enum: 'channel', _value: 'mask' }],
-                            _options: { dialogOptions: 'dontDisplay' }
-                        }
+                    const info = await batchPlay([
+                        { _obj: 'get', _target: [{ _ref: 'layer', _id: layer._id }], _options: { dialogOptions: 'dontDisplay' } }
                     ], { synchronousExecution: true });
-
-                    // 将当前选区保存为文档通道
-                    await batchPlay([
-                        {
-                            _obj: 'make',
-                            _target: [{ _ref: 'channel' }],
-                            using: { _ref: 'channel', _property: 'selection' },
-                            name: maskChannelName,
-                            _options: { dialogOptions: 'dontDisplay' }
-                        }
-                    ], { synchronousExecution: true });
-
-                    // 取消选区
-                    await batchPlay([
-                        {
-                            _obj: 'set',
-                            _target: [{ _ref: 'channel', _property: 'selection' }],
-                            to: { _enum: 'ordinal', _value: 'none' },
-                            _options: { dialogOptions: 'dontDisplay' }
-                        }
-                    ], { synchronousExecution: true });
-                    maskSaved = true;
+                    const inf = info?.[0] || {};
+                    hasMask = inf?.userMaskEnabled === true;
+                    console.log('当前图层是否存在用户蒙版:', hasMask);
                 } catch (e) {
-                    // 无用户蒙版或旧版不支持，静默跳过
-                    maskSaved = false;
+                    hasMask = false;
                 }
+
+                if (hasMask) {
+                    try {
+                        maskTempLayerName = `JW_TMP_MASK_${layer._id}`;
+                        // 创建临时图层，用于承载当前图层蒙版的像素信息
+                        await batchPlay([
+                            {
+                                _obj: 'make',
+                                _target: [{ _ref: 'layer' }],
+                                using: { _obj: 'layer', name: maskTempLayerName },
+                                _options: { dialogOptions: 'dontDisplay' }
+                            }
+                        ], { synchronousExecution: true });
+
+                        // 应用图像：把当前图层的蒙版信息通过应用图层拷贝到临时图层
+                        await batchPlay([
+                            {
+                                _obj: 'applyImageEvent',
+                                with: {
+                                    _obj: 'calculation',
+                                    to: {
+                                        _ref: [
+                                            { _ref: 'channel', _enum: 'channel', _value: 'mask' },
+                                            { _ref: 'layer', _id: layer._id }
+                                        ]
+                                    }
+                                },
+                                _options: { dialogOptions: 'dontDisplay' }
+                            }
+                        ], { synchronousExecution: true });
+                    } catch (e) {
+                        // 若失败，尝试清理临时图层后继续
+                        try {
+                            if (maskTempLayerName) {
+                                await batchPlay([
+                                    { _obj: 'delete', _target: [{ _ref: 'layer', _name: maskTempLayerName }], _options: { dialogOptions: 'dontDisplay' } }
+                                ], { synchronousExecution: true });
+                            }
+                        } catch {}
+                        maskTempLayerName = null;
+                        hasMask = false;
+                    }
+                }
+
+                
+                // 重新选则带蒙版的目标图层，准备复制滤镜。
+                await batchPlay([
+                { _obj: 'select', _target: [{ _ref: 'layer', _id: layer._id }], _options: { dialogOptions: 'dontDisplay' } }
+                ], { synchronousExecution: true });
 
                 // 3. 转换为智能对象
-                await batchPlay([{_obj: "newPlacedLayer"}], { synchronousExecution: true });
+                await batchPlay([{ _obj: 'newPlacedLayer' }], { synchronousExecution: true });
 
-                // 3. 获取当前选中图层
-                const result = await batchPlay([{_obj: "get", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }]}], { synchronousExecution: true });
-
-                const newLayer = result[0];
-
-                if (!newLayer) {
+                // 转为智能对象后ID更新：通过活动图层拿到新的ID
+                let newLayerId = layer._id;
+                const activeAfter = app.activeDocument?.activeLayers?.[0] as any;
+                if (!activeAfter) {
                     throw new Error('转换为智能对象失败：无法获取新图层');
                 }
+                const newId = (activeAfter as any).id ?? (activeAfter as any)._id;
+                if (typeof newId !== 'number') {
+                    throw new Error('转换为智能对象失败：新图层ID无效');
+                }
+                newLayerId = newId;
 
                 // 在复制前解析样本智能对象ID（必须既叫“样本图层”且类型为 smartObject）
                 const doc = app.activeDocument;
@@ -799,6 +824,8 @@ const FileArea: React.FC = () => {
 
                 // 4. 循环复制所有滤镜
                 const filterCount = adjustmentSteps.length;
+
+                // 正常复制样本图层的全部滤镜到原目标图层
                 for (let f = 1; f <= filterCount; f++) {
                     await batchPlay([{
                         _obj: "duplicate",
@@ -811,49 +838,109 @@ const FileArea: React.FC = () => {
                 // 5. 栅格化
                 await batchPlay([{ _obj: "rasterizeLayer", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }], rasterizeLayer: "entire" }], { synchronousExecution: true });
 
-                // 新增：若保存过蒙版则恢复为图层蒙版
-                if (maskSaved) {
+                // 额外：如果有蒙版，且存在液化滤镜，则复制液化滤镜给临时图层，实现液化蒙版的效果。
+                if (hasMask) {
                     try {
-                        // 从临时通道载入为选区
+                        const sampleInfo = await batchPlay([{ _obj: 'get', _target: [{ _ref: 'layer', _id: sampleSOId }], _options: { dialogOptions: 'dontDisplay' } }], { synchronousExecution: true });
+                        const fx = sampleInfo?.[0]?.smartObject?.filterFX || [];
+                        hasLiquifyFilter = fx.some((f: any) => {
+                            try {
+                                const raw = JSON.stringify(f).toLowerCase();
+                                return raw.includes('liquify') || raw.includes('液化');
+                            } catch {
+                                const n = (f?.filter?._obj || f?.name || '').toString().toLowerCase();
+                                return n.includes('liquify') || n.includes('液化');
+                            }
+                        });
+                        console.log('是否包含液化相关滤镜:', hasLiquifyFilter);
+                        if (hasLiquifyFilter && maskTempLayerName) {
+                            // 选中临时图层并转为智能对象
+                            await batchPlay([
+                                { _obj: 'select', _target: [{ _ref: 'layer', _name: maskTempLayerName }], makeVisible: false, _options: { dialogOptions: 'dontDisplay' } }
+                            ], { synchronousExecution: true });
+                            await batchPlay([{ _obj: 'newPlacedLayer' }], { synchronousExecution: true });
+
+                            // 仅复制液化滤镜
+                            for (let f = 1; f <= fx.length; f++) {
+                                const cur = fx[f - 1];
+                                let isLiquify = false;
+                                try {
+                                    const raw2 = JSON.stringify(cur).toLowerCase();
+                                    isLiquify = raw2.includes('liquify') || raw2.includes('液化');
+                                } catch {
+                                    const n2 = (cur?.filter?._obj || cur?.name || '').toString().toLowerCase();
+                                    isLiquify = n2.includes('liquify') || n2.includes('液化');
+                                }
+                                if (isLiquify) {
+                                    console.log('复制液化滤镜到临时图层，源索引:', f);
+                                    await batchPlay([
+                                        {
+                                            _obj: 'duplicate',
+                                            _target: [{ _ref: 'filterFX', _index: f }, { _ref: 'layer', _id: sampleSOId }],
+                                            to: { _ref: [{ _ref: 'filterFX', _index: 1 }, { _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }] },
+                                            _options: { dialogOptions: 'dontDisplay' }
+                                        }
+                                    ], { synchronousExecution: true });
+                                }
+                            }
+
+                            // 栅格化临时图层
+                            await batchPlay([
+                                { _obj: 'rasterizeLayer', _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }], _options: { dialogOptions: 'dontDisplay' } }
+                            ], { synchronousExecution: true });
+                        }
+                    } catch (e) { console.warn('液化蒙版流程失败', e); }
+                }
+
+
+                // 若原图层带蒙版，栅格化后蒙版丢失，需要为当前图层新建空白蒙版，并将临时图层信息应用到蒙版上
+                if (hasMask && maskTempLayerName && hasLiquifyFilter) {
+                    try {
+                        await batchPlay([
+                            { _obj: 'select', _target: [{ _ref: 'layer', _id: newLayerId }], makeVisible: false, _options: { dialogOptions: 'dontDisplay' } }
+                        ], { synchronousExecution: true });
+
+                        // 为当前图层新建空白蒙版（revealAll），新建后当前图层的蒙版通道默认会被选中，无需额外的选择操作。
                         await batchPlay([
                             {
-                                _obj: 'set',
-                                _target: [{ _ref: 'channel', _property: 'selection' }],
-                                to: [{ _ref: 'channel', _name: maskChannelName }],
+                                _obj: 'make',
+                                new: { _class: 'channel' },
+                                at: { _ref: 'channel', _enum: 'channel', _value: 'mask' },
+                                using: { _enum: 'userMaskEnabled', _value: 'revealAll' },
+                                _isCommand: false,
                                 _options: { dialogOptions: 'dontDisplay' }
                             }
                         ], { synchronousExecution: true });
 
-                        // 添加基于选区的图层蒙版（显示选区）
+                        // 选择应用来源（如果存在液化临时层优先用之）
+                        const sourceName = maskTempLayerName;
+
+                        // 将临时图层信息应用到蒙版
                         await batchPlay([
                             {
-                                _obj: 'addLayerMask',
-                                what: { _enum: 'userMaskEnabled', _value: 'revealSelection' },
+                                _obj: 'applyImageEvent',
+                                with: {
+                                    _obj: 'calculation',
+                                    to: {
+                                        _ref: [
+                                            { _ref: 'channel', _enum: 'channel', _value: 'RGB' },
+                                            { _ref: 'layer', _name: sourceName }
+                                        ]
+                                    },
+                                    preserveTransparency: true
+                                },
                                 _options: { dialogOptions: 'dontDisplay' }
                             }
                         ], { synchronousExecution: true });
 
-                        // 删除临时通道
-                        await batchPlay([
-                            { _obj: 'delete', _target: [{ _ref: 'channel', _name: maskChannelName }], _options: { dialogOptions: 'dontDisplay' } }
-                        ], { synchronousExecution: true });
-
-                        // 取消选区
-                        await batchPlay([
-                            {
-                                _obj: 'set',
-                                _target: [{ _ref: 'channel', _property: 'selection' }],
-                                to: { _enum: 'ordinal', _value: 'none' },
-                                _options: { dialogOptions: 'dontDisplay' }
-                            }
-                        ], { synchronousExecution: true });
-                    } catch (e) {
-                        // 恢复失败则尝试清理通道并继续
+                        // 删除临时图层（避免重复删除同名图层）
                         try {
                             await batchPlay([
-                                { _obj: 'delete', _target: [{ _ref: 'channel', _name: maskChannelName }], _options: { dialogOptions: 'dontDisplay' } }
+                                { _obj: 'delete', _target: [{ _ref: 'layer', _name: maskTempLayerName }], _options: { dialogOptions: 'dontDisplay' } }
                             ], { synchronousExecution: true });
                         } catch {}
+                    } catch (e) {
+                        console.warn('为当前图层新建并应用蒙版过程失败', e);
                     }
                 }
 
@@ -862,7 +949,7 @@ const FileArea: React.FC = () => {
                     await batchPlay([
                         {
                             _obj: 'applyLocking',
-                            _target: [{ _ref: 'layer', _id: layer._id }],
+                            _target: [{ _ref: 'layer', _id: newLayerId }],
                             layerLocking: {
                                 _obj: 'layerLocking',
                                 protectAll: originalState.protectAll,
@@ -877,7 +964,7 @@ const FileArea: React.FC = () => {
                     await batchPlay([
                         {
                             _obj: 'hide',
-                            null: [{ _ref: 'layer', _id: layer._id }],
+                            null: [{ _ref: 'layer', _id: newLayerId }],
                             _options: { dialogOptions: 'dontDisplay' },
                         }
                     ], { synchronousExecution: true });
@@ -1077,7 +1164,7 @@ const FileArea: React.FC = () => {
             try { 
                 const { executeAsModal } = require("photoshop").core;
                 const { batchPlay } = require("photoshop").action;
-                
+
                 // 先定位样本智能对象ID（优先精确“样本图层 <ts>”，否则前缀匹配）
                 const doc = app.activeDocument;
                 const preferName = currentSampleTs ? `样本图层 ${currentSampleTs}` : null;
@@ -1461,5 +1548,6 @@ const FileArea: React.FC = () => {
         isProcessing  // 添加这一行
     };
 };
+
 
 export default FileArea;
