@@ -107,6 +107,8 @@ html,body {
     justify-content: space-between;
     align-items: center;
 }
+/* 去掉记录列表最后一项的分割线 */
+.operation-list > li:last-child { border-bottom: none !important; }
 
 /* 记录列表中齿轮按钮交互样式 */
 .operation-list li sp-action-button {
@@ -195,6 +197,11 @@ html,body {
     font-size: 14px;  /* 添加字体大小 */
     min-height: 32px; /* 固定行高，避免hover时因图标显隐而抖动 */
 }
+/* 移除最后一个图层项的底部分隔线 */
+.layer-list ul > li.layer-item:last-child,
+.layer-list ul li.layer-item:last-of-type { border-bottom: none !important; }
+.layer-list ul > li.layer-item:last-child { border-bottom: none !important; }
+.group-button ul > li.layer-item:last-child { border-bottom: none !important; }
 
 .group-button {
     margin: 8px 0;  /* 添加这行，增加组之间的间距 */
@@ -385,7 +392,7 @@ html,body {
 .layer-status-icons sp-action-button.icon-button.visibility-button.active { color: var(--warn) !important; }
 .layer-status-icons sp-action-button.icon-button.transparency-lock.active,
 .layer-status-icons sp-action-button.icon-button.position-lock.active,
-.layer-status-icons sp-action-button.icon-button.lock-all.active { color: var(--danger) !important; }
+.layer-status-icons sp-action-button.icon-button.lock-all.active { color: var(--warn) !important; }
 
 /* 所有状态下图形元素填充随 currentColor 渲染 */
 .layer-status-icons sp-action-button.icon-button .icon .icon-fill,
@@ -423,7 +430,7 @@ html,body {
 .layer-status-icons sp-action-button.icon-button.visibility-button.active { color: var(--warn) !important; }
 .layer-status-icons sp-action-button.icon-button.transparency-lock.active,
 .layer-status-icons sp-action-button.icon-button.position-lock.active,
-.layer-status-icons sp-action-button.icon-button.lock-all.active { color: var(--danger) !important; }
+.layer-status-icons sp-action-button.icon-button.lock-all.active { color: var(--warn) !important; }
 
 /* 所有状态下图形元素填充随 currentColor 渲染 */
 .layer-status-icons sp-action-button.icon-button .icon .icon-fill,
@@ -448,19 +455,24 @@ html,body {
 .layer-status-icons .visibility-button.active:hover { color: var(--warn); }
 .layer-status-icons .transparency-lock.active:hover,
 .layer-status-icons .position-lock.active:hover,
-.layer-status-icons .lock-all.active:hover { color: var(--danger); }
+.layer-status-icons .lock-all.active:hover { color: var(--warn); }
 
 /* 图层名颜色联动：
    - 仅隐藏：黄色
    - 任意锁：红色（无视是否隐藏）
 */
 .layer-name.hidden-only { color: var(--warn); opacity: 1; }
-.layer-name.locked { color: var(--danger); opacity: 1; }
+.layer-name.locked { color: var(--warn); opacity: 1; }
 .layer-name.hidden.locked,
-.layer-name.locked.hidden { color: var(--danger); opacity: 1; }
+.layer-name.locked.hidden { color: var(--warn); opacity: 1; }
+/* 黑名单：名称渲染为红色 */
+.layer-name.blacklisted { color: var(--danger); opacity: 1; }
+
+/* 黑名单名称（兜底重复定义，若前文被覆盖，这里确保存在） */
+.layer-name.blacklisted { color: var(--danger); opacity: 1; }
 
 /* 背景图层名：紫色（优先级覆盖，且仅当未处于红/黄态时生效）*/
-.layer-item .layer-name.background:not(.locked):not(.hidden):not(.hidden-only) {
+.layer-item .layer-name.background:not(.locked):not(.hidden):not(.hidden-only):not(.blacklisted) {
   color: var(--purple, #9b59b6) !important;
   opacity: 1;
 }

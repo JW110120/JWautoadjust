@@ -7,6 +7,7 @@ import { useProcessing } from './contexts/ProcessingContext';
 import { VisibilityOffIcon, VisibilityOnIcon, TransparencyLockIcon, MoveLockIcon, LockClosedIcon, LockOpenIcon, ExpandRightIcon, ExpandDownIcon, FolderClosedIcon, FolderOpenIcon, BackgroundLockIcon } from './styles/Icons';
 import { useRecordContext } from './contexts/RecordContext';
 import { forceRefreshSmartFilters } from './utils/layerUtils';
+import { isLayerBlacklisted } from './utils/layerBlacklist';
 
    // 渲染文件树
    const LayerTreeComponent = React.memo(({ 
@@ -102,8 +103,8 @@ import { forceRefreshSmartFilters } from './utils/layerUtils';
                 const isHidden = state.visible === false;
                 const isLockedAny = !!(state.protectAll || state.protectPosition || state.protectTransparency);
                 const hiddenOnly = isHidden && !isLockedAny;
-                // 当为背景图层时，不叠加 locked/hidden/hidden-only，避免颜色规则被覆盖
-                const nameClass = `layer-name ${selectedLayerPaths[`${currentPath}_${index}`] ? 'selected' : ''} ${state.isBackground ? '' : (isHidden ? 'hidden' : '')} ${state.isBackground ? '' : (isLockedAny ? 'locked' : '')} ${state.isBackground ? '' : (hiddenOnly ? 'hidden-only' : '')} ${state.isBackground ? 'background' : ''}`;
+                // 当为背景图层时，不叠加 locked/hidden/hidden-only/blacklisted，保证始终紫色
+                 const nameClass = `layer-name ${selectedLayerPaths[`${currentPath}_${index}`] ? 'selected' : ''} ${state.isBackground ? '' : (isHidden ? 'hidden' : '')} ${state.isBackground ? '' : (isLockedAny ? 'locked' : '')} ${state.isBackground ? '' : (hiddenOnly ? 'hidden-only' : '')} ${state.isBackground ? 'background' : ''} ${state.isBackground ? '' : (state.isBlacklisted ? 'blacklisted' : '')}`;
                 const isHoveringThis = hoveredLayerId === layer._id;
                 
                 // 检查是否为背景图层（优先使用状态中的标记）
@@ -128,7 +129,8 @@ import { forceRefreshSmartFilters } from './utils/layerUtils';
                         <span 
                             onClick={(e) => {
                                 e.stopPropagation();
-                                handleLayerCheckboxChange(layer, currentPath, index, e);
+                                // 名称点击与复选框行为保持一致（允许逐个点击累加多选）
+                                handleLayerCheckboxChange(layer, currentPath, index, e, true);
                             }}
                             className={nameClass}
                         >
@@ -241,7 +243,7 @@ const FileArea: React.FC = () => {
     const [lastClickedLayerIndex, setLastClickedLayerIndex] = useState(null);
     const [selectedLayerIndex, setSelectedLayerIndex] = useState(null);
     const { ref: layerListRef } = useScrollPosition();
-    const [layerStates, setLayerStates] = useState<Record<number, { visible: boolean; protectTransparency?: boolean; protectPosition?: boolean; protectAll?: boolean; isBackground?: boolean }>>({});
+    const [layerStates, setLayerStates] = useState<Record<number, { visible: boolean; protectTransparency?: boolean; protectPosition?: boolean; protectAll?: boolean; isBackground?: boolean; opacity?: number; fillOpacity?: number; blendMode?: string; hasMask?: boolean; isBlacklisted?: boolean }>>({});
 
     // 获取所有图层的显示/锁定状态
     const fetchLayerStates = useCallback(async () => {
@@ -250,7 +252,7 @@ const FileArea: React.FC = () => {
             if (!doc) return;
 
             // 构建状态映射（只读取必要属性，尽量避免持有 UXP 代理对象）
-            const states: Record<number, { visible: boolean; protectTransparency?: boolean; protectPosition?: boolean; protectAll?: boolean; isBackground?: boolean }> = {};
+            const states: Record<number, { visible: boolean; protectTransparency?: boolean; protectPosition?: boolean; protectAll?: boolean; isBackground?: boolean; opacity?: number; fillOpacity?: number; blendMode?: string; hasMask?: boolean; isBlacklisted?: boolean }> = {};
             const traverse = (layers: any[]) => {
                 layers.forEach((ly: any) => {
                     try {
@@ -258,11 +260,11 @@ const FileArea: React.FC = () => {
                         if (typeof id === 'number') {
                             const safe = (fn: () => any, fb: any) => { try { return fn(); } catch { return fb; } };
                             const visible = safe(() => ly.visible !== false, true);
-                            const protectTransparency = safe(() => !!ly.protectTransparency, false);
-                            const protectPosition = safe(() => !!ly.protectPosition, false);
-                            const protectAll = safe(() => !!ly.protectAll, false);
+                            const protectTransparency = safe(() => !!(((ly as any).transparentPixelsLocked ?? (ly as any).pixelsLocked ?? (ly as any).protectTransparency)), false);
+                            const protectPosition = safe(() => !!(((ly as any).positionLocked ?? (ly as any).protectPosition)), false);
+                            const protectAll = safe(() => !!(((ly as any).allLocked ?? (ly as any).locked ?? (ly as any).protectAll)), false);
                             const isBackground = safe(() => !!ly.background, false);
-                            states[id] = { visible, protectTransparency, protectPosition, protectAll, isBackground };
+                            states[id] = { visible, protectTransparency, protectPosition, protectAll, isBackground, opacity: 100, fillOpacity: 100, blendMode: 'normal', hasMask: false, isBlacklisted: false };
                         }
                         const kids = (() => { try { return (ly as any).layers || []; } catch { return []; } })();
                         if (Array.isArray(kids) && kids.length) traverse(kids);
@@ -270,11 +272,71 @@ const FileArea: React.FC = () => {
                 });
             };
             traverse(((doc as any).layers) || []);
+            // 额外：用 batchPlay 精准读取每个图层的 background 属性，保证背景识别正确
+            try {
+                const ids = Object.keys(states).map(k => Number(k)).filter(n => !Number.isNaN(n));
+                if (ids.length) {
+                    const { executeAsModal } = require('photoshop').core;
+                    const { batchPlay } = require('photoshop').action;
+                    await executeAsModal(async () => {
+                        const descs = ids.map(id => ({
+                            _obj: 'get',
+                            _target: [{ _ref: 'layer', _id: id }],
+                            _options: { dialogOptions: 'dontDisplay' }
+                        }));
+                        const results = await batchPlay(descs, { synchronousExecution: true });
+                        results.forEach((res: any, i: number) => {
+                            const id = ids[i];
+                            const toBool = (v: any) => (typeof v === 'boolean' ? v : !!(v && v._value === true));
+                            const bg = toBool(res?.background);
+                            const normalizePercent = (n: number) => {
+                                if (typeof n !== 'number' || Number.isNaN(n)) return 100;
+                                return n > 100 ? Math.round(n / 2.55) : n;
+                            };
+                            const opacityVal = (() => {
+                                const v = res?.opacity;
+                                if (typeof v === 'number') return normalizePercent(v);
+                                if (v && typeof v._value === 'number') return normalizePercent(v._value);
+                                return 100;
+                            })();
+                            const fillOpacityVal = (() => {
+                                const v = res?.fillOpacity;
+                                if (typeof v === 'number') return normalizePercent(v);
+                                if (v && typeof v._value === 'number') return normalizePercent(v._value);
+                                return 100;
+                            })();
+                            const blendModeVal = (() => {
+                                const m = res?.mode;
+                                if (typeof m === 'string') return m;
+                                if (m && typeof m._value === 'string') return m._value;
+                                return 'normal';
+                            })();
+                            const hasMaskVal = toBool(res?.userMaskEnabled) || toBool(res?.hasUserMask) || toBool(res?.vectorMaskEnabled);
+                            const isBlacklisted = isLayerBlacklisted({ opacity: opacityVal, fillOpacity: fillOpacityVal, blendMode: blendModeVal, hasMask: hasMaskVal });
+                            if (states[id]) {
+                                states[id].isBackground = bg;
+                                states[id].opacity = opacityVal;
+                                states[id].fillOpacity = fillOpacityVal;
+                                states[id].blendMode = blendModeVal;
+                                states[id].hasMask = hasMaskVal;
+                                states[id].isBlacklisted = isBlacklisted;
+                            }
+                        });
+                    }, { commandName: '读取背景属性' });
+                }
+            } catch (err) {
+                console.warn('读取背景属性失败', err);
+            }
             setLayerStates(states);
         } catch (e) {
             console.error('获取图层状态失败:', e);
         }
     }, [updateTrigger]);
+
+    // 初始化与刷新时拉取一次图层状态，保证背景状态正确
+    useEffect(() => {
+        fetchLayerStates();
+    }, [fetchLayerStates, updateTrigger]);
 
     // 切换组的展开/折叠状态
     const toggleGroup = useCallback((path: string) => {
@@ -1235,24 +1297,50 @@ const FileArea: React.FC = () => {
     const handleLayerCheckboxChange = useCallback((layer: Layer, currentPath: string, index: number, event?: React.MouseEvent, isCheckbox?: boolean) => {
         const layerIdentifier = `${currentPath}_${index}`;
 
+        // 计算扁平索引：根据当前渲染顺序的可见像素图层
+        const computeFlatIndex = () => {
+            // 构建扁平列表（考虑折叠状态与是否有内容）
+            const flatList: Array<{ identifier: string; layer: any }> = [];
+            const traverse = (layers: any[], parentPath = '') => {
+                layers.forEach((ly: any, idx: number) => {
+                    const p = parentPath ? `${parentPath}/${ly.name}` : ly.name;
+                    if (ly.kind === 'group') {
+                        if (!collapsedGroups[p]) traverse((ly.layers || []) as any[], p);
+                    } else if (ly.kind === 'pixel') {
+                        const b = ly.bounds;
+                        const hasContent = b && (b.width > 0 && b.height > 0);
+                        if (hasContent) flatList.push({ identifier: `${p}_${idx}`, layer: ly });
+                    }
+                });
+            };
+            if (documentLayers) traverse(documentLayers as any);
+            return flatList.findIndex(x => x.identifier === layerIdentifier);
+        };
+
+        const flatIndex = computeFlatIndex();
+        if (flatIndex < 0) {
+            setLastClickedLayerIndex(null);
+            return;
+        }
+
         // 情况A：来自checkbox且没有按住任何修饰键 => 仅切换该项勾选，不清空其它勾选
         if (isCheckbox && event && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
             const newSelectedIndices = new Set(selectedLayerIndices);
 
             // 如果当前是单选状态，先把单选加入多选集合（保持已有选择不丢失）
-            if (selectedLayerIndex !== null && selectedLayerIndices.size === 0 && selectedLayerIndex !== index) {
+            if (selectedLayerIndex !== null && selectedLayerIndices.size === 0 && selectedLayerIndex !== flatIndex) {
                 newSelectedIndices.add(selectedLayerIndex);
             }
 
             const isCurrentlySelected = !!selectedLayerPaths[layerIdentifier];
             if (isCurrentlySelected) {
                 // 取消该项
-                newSelectedIndices.delete(index);
+                newSelectedIndices.delete(flatIndex);
                 setSelectedLayerPaths(prev => ({ ...prev, [layerIdentifier]: false }));
                 setSelectedLayers(prev => prev.filter(l => l.identifier !== layerIdentifier));
             } else {
                 // 勾选该项
-                newSelectedIndices.add(index);
+                newSelectedIndices.add(flatIndex);
                 setSelectedLayerPaths(prev => ({ ...prev, [layerIdentifier]: true }));
                 const layerInfo = {
                     ...layer,
@@ -1270,7 +1358,7 @@ const FileArea: React.FC = () => {
             }
 
             setSelectedLayerIndices(newSelectedIndices);
-            setLastClickedLayerIndex(index);
+            setLastClickedLayerIndex(flatIndex);
             // 根据集合大小与单选状态进行收敛
             if (newSelectedIndices.size === 0) {
                 setSelectedLayerIndex(null);
@@ -1286,7 +1374,7 @@ const FileArea: React.FC = () => {
 
         if (event && (event.ctrlKey || event.metaKey)) {
             // Ctrl+点击：切换选中状态
-            if (selectedLayerIndex === index && selectedLayerIndices.size === 0) {
+            if (selectedLayerIndex === flatIndex && selectedLayerIndices.size === 0) {
                 setSelectedLayerIndex(null);
                 setLastClickedLayerIndex(null);
                 setSelectedLayerPaths(prev => ({
@@ -1307,14 +1395,14 @@ const FileArea: React.FC = () => {
             const isCurrentlySelected = selectedLayerPaths[layerIdentifier];
             
             if (isCurrentlySelected) {
-                newSelectedIndices.delete(index);
+                newSelectedIndices.delete(flatIndex);
                 setSelectedLayerPaths(prev => ({
                     ...prev,
                     [layerIdentifier]: false
                 }));
                 setSelectedLayers(prev => prev.filter(l => l.identifier !== layerIdentifier));
             } else {
-                newSelectedIndices.add(index);
+                newSelectedIndices.add(flatIndex);
                 setSelectedLayerPaths(prev => ({
                     ...prev,
                     [layerIdentifier]: true
@@ -1332,7 +1420,7 @@ const FileArea: React.FC = () => {
             }
             
             setSelectedLayerIndices(newSelectedIndices);
-            setLastClickedLayerIndex(index);
+            setLastClickedLayerIndex(flatIndex);
             
             // 如果多选集合为空，清空所有选中状态
             if (newSelectedIndices.size === 0) {
@@ -1347,68 +1435,65 @@ const FileArea: React.FC = () => {
                 setSelectedLayerIndex(null);
             }
         } else if (event && event.shiftKey && lastClickedLayerIndex !== null) {
-            // Shift+点击：范围选择
+            // Shift+点击：范围选择（使用扁平索引）
             const newSelectedIndices = new Set(selectedLayerIndices);
-            
+
             // 如果当前是单选状态，先将单选项加入多选集合
             if (selectedLayerIndex !== null && selectedLayerIndices.size === 0) {
                 newSelectedIndices.add(selectedLayerIndex);
             }
-            
-            const start = Math.min(lastClickedLayerIndex, index);
-            const end = Math.max(lastClickedLayerIndex, index);
-            
-            // 需要获取所有可见图层的索引映射
-            const allVisibleLayers: Array<{ layer: Layer; path: string; index: number }> = [] as any;
-            const collectVisibleLayers = (layers: any[], parentPath = '') => {
-                layers.forEach((layer, idx) => {
-                    const currentPath = parentPath ? `${parentPath}/${layer.name}` : layer.name;
-                    if (layer.kind === 'pixel') {
-                        const hasContent = layer.bounds && (layer.bounds.width > 0 && layer.bounds.height > 0);
-                        if (hasContent) {
-                            allVisibleLayers.push({ layer, path: currentPath, index: idx });
+
+            // 构建当前渲染顺序下的扁平可见像素图层列表
+            const computeFlatList = () => {
+                const flat: Array<{ identifier: string; layer: any }> = [];
+                const trav = (layers: any[], parentPath = '') => {
+                    layers.forEach((ly: any, idx: number) => {
+                        const p = parentPath ? `${parentPath}/${ly.name}` : ly.name;
+                        if (ly.kind === 'group') {
+                            if (!collapsedGroups[p]) trav((ly.layers || []) as any[], p);
+                        } else if (ly.kind === 'pixel') {
+                            const b = ly.bounds;
+                            const hasContent = b && (b.width > 0 && b.height > 0);
+                            if (hasContent) flat.push({ identifier: `${p}_${idx}`, layer: ly });
                         }
-                    } else if (layer.kind === 'group' && layer.layers) {
-                        collectVisibleLayers(layer.layers, currentPath);
-                    }
-                });
-            };
-            
-            if (documentLayers) {
-                collectVisibleLayers(documentLayers as any);
-            }
-            
-            for (let i = start; i <= end && i < (allVisibleLayers as any).length; i++) {
-                const layerData = (allVisibleLayers as any)[i];
-                if (layerData) {
-                    const layerId = `${layerData.path}_${layerData.index}`;
-                    newSelectedIndices.add(i);
-                    setSelectedLayerPaths(prev => ({
-                        ...prev,
-                        [layerId]: true
-                    }));
-                    
-                    const layerInfo = {
-                        ...layerData.layer,
-                        identifier: layerId,
-                        name: layerData.layer.name,
-                        _id: layerData.layer._id,
-                        id: layerData.layer.id,
-                        bounds: layerData.layer.bounds,
-                        parent: layerData.layer.parent
-                    } as any;
-                    
-                    setSelectedLayers(prev => {
-                        const exists = prev.find(l => l.identifier === layerId);
-                        return exists ? prev : [...prev, layerInfo];
                     });
+                };
+                if (documentLayers) trav(documentLayers as any);
+                return flat;
+            };
+
+            const flatList = computeFlatList();
+            const startFlat = Math.min(lastClickedLayerIndex, flatIndex);
+            const endFlat = Math.max(lastClickedLayerIndex, flatIndex);
+
+            for (let i = startFlat; i <= endFlat; i++) {
+                const item = flatList[i];
+                if (!item) continue;
+                const id = item.identifier;
+                if (!selectedLayerPaths[id]) {
+                    newSelectedIndices.add(i);
+                    setSelectedLayerPaths(prev => ({ ...prev, [id]: true }));
+                    setSelectedLayers(prev => [
+                        ...prev,
+                        {
+                            ...item.layer,
+                            identifier: id,
+                            name: item.layer.name,
+                            _id: item.layer._id,
+                            id: item.layer.id,
+                            bounds: item.layer.bounds,
+                            parent: item.layer.parent
+                        }
+                    ]);
                 }
             }
-            
+
             setSelectedLayerIndices(newSelectedIndices);
             setSelectedLayerIndex(null); // 多选时清空单选状态
+            setLastClickedLayerIndex(flatIndex);
+            return;
         } else {
-            // 普通点击：根据当前状态决定行为
+            // 普通点击：根据当前状态决定行为（统一使用扁平索引）
             if (selectedLayerIndices.size > 0) {
                 // 如果当前是多选状态，点击任何项目都转为单选该项目
                 // 清空所有选中状态
@@ -1417,7 +1502,7 @@ const FileArea: React.FC = () => {
                 setSelectedLayerIndices(new Set());
                 
                 // 选中当前项目
-                setSelectedLayerIndex(index);
+                setSelectedLayerIndex(flatIndex);
                 setSelectedLayerPaths({ [layerIdentifier]: true });
                 const layerInfo = {
                     ...layer,
@@ -1431,7 +1516,7 @@ const FileArea: React.FC = () => {
                 setSelectedLayers([layerInfo]);
             } else {
                 // 当前是单选或未选：切换到该项
-                const isCurrentlySelected = selectedLayerIndex === index;
+                const isCurrentlySelected = selectedLayerIndex === flatIndex;
                 if (isCurrentlySelected) {
                     // 取消选择
                     setSelectedLayerIndex(null);
@@ -1439,7 +1524,7 @@ const FileArea: React.FC = () => {
                     setSelectedLayers(prev => prev.filter(l => l.identifier !== layerIdentifier));
                 } else {
                     // 切换为该项
-                    setSelectedLayerIndex(index);
+                    setSelectedLayerIndex(flatIndex);
                     setSelectedLayerPaths({ [layerIdentifier]: true });
                     const layerInfo = {
                         ...layer,
@@ -1453,7 +1538,7 @@ const FileArea: React.FC = () => {
                     setSelectedLayers([layerInfo]);
                 }
             }
-            setLastClickedLayerIndex(index);
+            setLastClickedLayerIndex(flatIndex);
         }
     }, [selectedLayerPaths, selectedLayerIndices, selectedLayerIndex, lastClickedLayerIndex, documentLayers]);
 
